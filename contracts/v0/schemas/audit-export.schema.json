@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/audit-export.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "export_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_context": {
+      "$ref": "runtime-context.schema.json"
+    },
+    "capture_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "curation_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "recall_logs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "auditor_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "den_memory_provider_enabled": {
+          "const": false
+        },
+        "recall_tools_allowed": {
+          "const": false
+        },
+        "reads_via_audit_surfaces_only": {
+          "const": true
+        }
+      },
+      "required": [
+        "den_memory_provider_enabled",
+        "recall_tools_allowed",
+        "reads_via_audit_surfaces_only"
+      ]
+    }
+  },
+  "required": [
+    "export_id",
+    "generated_at",
+    "runtime_context",
+    "capture_events",
+    "curation_events",
+    "recall_logs",
+    "auditor_constraints"
+  ]
+}

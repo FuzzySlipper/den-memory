@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/runtime-context.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "runtime": {
+      "type": "string",
+      "enum": [
+        "hermes",
+        "pi_crew",
+        "den_core",
+        "manual",
+        "import"
+      ]
+    },
+    "agent_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_instance_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_kind": {
+      "type": "string",
+      "enum": [
+        "durable_agent",
+        "worker_assignment",
+        "assistant_delegate",
+        "cron",
+        "diagnostic",
+        "import"
+      ]
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "assignment_id": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "planner",
+        "runner",
+        "reviewer",
+        "worker",
+        "assistant",
+        "human",
+        "sysadmin",
+        "auditor"
+      ]
+    },
+    "audience": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "planner",
+          "runner",
+          "reviewer",
+          "worker",
+          "human",
+          "sysadmin",
+          "hermes",
+          "pi_crew",
+          "model_eval",
+          "auditor",
+          "any"
+        ]
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "planning",
+        "implementation",
+        "review",
+        "ops",
+        "general",
+        "audit"
+      ]
+    },
+    "source_surface": {
+      "type": "string",
+      "enum": [
+        "discord",
+        "den_channels",
+        "cli",
+        "api",
+        "worker_pool",
+        "import",
+        "test"
+      ]
+    },
+    "user_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "runtime",
+    "session_kind",
+    "role",
+    "audience",
+    "mode"
+  ]
+}

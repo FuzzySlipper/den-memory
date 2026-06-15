@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/recall-packet.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "packet_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packet_md": {
+      "type": "string"
+    },
+    "root_matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node_slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "match_kind": {
+            "type": "string",
+            "enum": [
+              "authoritative",
+              "discoverable",
+              "explicit",
+              "fts_only"
+            ]
+          },
+          "score": {
+            "type": "number"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_slug",
+          "match_kind",
+          "why"
+        ]
+      }
+    },
+    "included_nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authority_scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "discovery_scope": {
+            "type": "string",
+            "enum": [
+              "same_project",
+              "linked_projects",
+              "global_discoverable",
+              "explicit_only"
+            ]
+          },
+          "claim_strength": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "assessment",
+              "recommendation",
+              "policy"
+            ]
+          },
+          "interpretation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title"
+        ]
+      }
+    },
+    "included_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node_slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_slug",
+          "reason"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "$ref": "source-ref.schema.json"
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "recall_log_id": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "scoring_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scoring_defaults_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "recall_log_id",
+        "scoring_profile"
+      ]
+    }
+  },
+  "required": [
+    "packet_id",
+    "packet_md",
+    "root_matches",
+    "included_nodes",
+    "included_edges",
+    "skipped",
+    "warnings",
+    "provenance",
+    "audit"
+  ]
+}

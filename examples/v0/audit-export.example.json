@@ -1,0 +1,47 @@
+{
+  "export_id": "audit_export_example_2467",
+  "generated_at": "2026-06-15T00:00:00Z",
+  "runtime_context": {
+    "runtime": "hermes",
+    "agent_identity": "den-mcp-runner",
+    "profile_id": "den-mcp-runner",
+    "agent_instance_id": null,
+    "session_id": "example-session",
+    "session_key": "task-2467",
+    "session_kind": "durable_agent",
+    "project_id": "den-memory",
+    "task_id": 2467,
+    "assignment_id": null,
+    "run_id": null,
+    "role": "auditor",
+    "audience": [
+      "auditor"
+    ],
+    "mode": "audit",
+    "source_surface": "den_channels",
+    "user_id": null
+  },
+  "capture_events": [
+    {
+      "id": 1001,
+      "decision": "captured",
+      "candidate_ids": [
+        2001
+      ]
+    }
+  ],
+  "curation_events": [],
+  "recall_logs": [
+    {
+      "id": 3001,
+      "packet_id": "recall_example_2467",
+      "scoring_profile": "v0-default"
+    }
+  ],
+  "warnings": [],
+  "auditor_constraints": {
+    "den_memory_provider_enabled": false,
+    "recall_tools_allowed": false,
+    "reads_via_audit_surfaces_only": true
+  }
+}

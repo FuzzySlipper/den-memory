@@ -1,0 +1,20 @@
+{
+  "runtime": "hermes",
+  "agent_identity": "den-mcp-runner",
+  "profile_id": "den-mcp-runner",
+  "agent_instance_id": null,
+  "session_id": "example-session",
+  "session_key": "task-2467",
+  "session_kind": "durable_agent",
+  "project_id": "den-memory",
+  "task_id": 2467,
+  "assignment_id": null,
+  "run_id": null,
+  "role": "runner",
+  "audience": [
+    "runner"
+  ],
+  "mode": "implementation",
+  "source_surface": "den_channels",
+  "user_id": null
+}

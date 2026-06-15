@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/source-ref.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "den_task",
+        "den_document",
+        "den_message",
+        "den_review_finding",
+        "hermes_session",
+        "hermes_memory_file",
+        "pi_crew_session",
+        "pi_crew_assignment",
+        "pi_crew_run",
+        "url",
+        "file",
+        "manual_note",
+        "imported_transcript"
+      ]
+    },
+    "source_project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_locator": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "source_summary": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verified_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "unverified",
+        "verified",
+        "broken",
+        "stale"
+      ]
+    }
+  },
+  "required": [
+    "source_kind",
+    "source_id",
+    "source_locator",
+    "verification_status"
+  ]
+}

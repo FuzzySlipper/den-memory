@@ -1,0 +1,9 @@
+{
+  "capture_event_id": 1001,
+  "decision": "captured",
+  "reason": "captured as pending candidate; not promoted",
+  "candidate_ids": [
+    2001
+  ],
+  "warnings": []
+}

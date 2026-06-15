@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/capture-response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "capture_event_id": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "captured",
+        "ignored",
+        "filtered",
+        "errored"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "candidate_ids": {
+      "type": "array",
+      "items": {
+        "type": [
+          "integer",
+          "string"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "capture_event_id",
+    "decision",
+    "reason",
+    "candidate_ids",
+    "warnings"
+  ]
+}

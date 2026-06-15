@@ -1,0 +1,38 @@
+{
+  "id": null,
+  "title": "Den Memories contract uses strict enum vocabulary",
+  "body_md": "The v0 contract rejects unknown layers, scopes, statuses, curation actions, and relations unless a registry migration adds them.",
+  "summary": "Strict vocabulary is part of adapter compatibility.",
+  "proposed_kind": "schema_contract",
+  "status": "pending",
+  "common": {
+    "scope_kind": "project",
+    "scope_id": "den-memory",
+    "authority_scope_kind": "project",
+    "authority_scope_id": "den-memory",
+    "discovery_scope": "global_discoverable",
+    "claim_strength": "policy",
+    "layer": "schema_model",
+    "audience": [
+      "runner",
+      "worker",
+      "reviewer"
+    ]
+  },
+  "source_refs": [
+    {
+      "source_kind": "den_task",
+      "source_project_id": "den-memory",
+      "source_id": "2467",
+      "source_locator": {
+        "task_id": 2467
+      },
+      "source_summary": "Task defining Den Memories v0 contract artifacts.",
+      "observed_at": "2026-06-15T00:00:00Z",
+      "verified_at": null,
+      "verification_status": "verified"
+    }
+  ],
+  "extraction_confidence": 0.86,
+  "created_by": "den-mcp-runner"
+}

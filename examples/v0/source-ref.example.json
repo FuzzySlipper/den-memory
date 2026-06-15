@@ -1,0 +1,12 @@
+{
+  "source_kind": "den_task",
+  "source_project_id": "den-memory",
+  "source_id": "2467",
+  "source_locator": {
+    "task_id": 2467
+  },
+  "source_summary": "Task defining Den Memories v0 contract artifacts.",
+  "observed_at": "2026-06-15T00:00:00Z",
+  "verified_at": null,
+  "verification_status": "verified"
+}

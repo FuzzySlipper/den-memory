@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/capture-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "runtime_context": {
+      "$ref": "runtime-context.schema.json"
+    },
+    "event_kind": {
+      "type": "string",
+      "enum": [
+        "turn",
+        "task_message",
+        "document_comment",
+        "worker_packet",
+        "tool_result",
+        "manual_note",
+        "imported_session"
+      ]
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "source-ref.schema.json"
+      }
+    },
+    "raw_content": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "proposed_scope_kind": {
+      "type": "string",
+      "enum": [
+        "global",
+        "project",
+        "space",
+        "profile",
+        "agent_instance",
+        "user",
+        "task",
+        "external"
+      ]
+    },
+    "proposed_scope_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "capture_policy_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "runtime_context",
+    "event_kind",
+    "source_refs",
+    "metadata",
+    "proposed_scope_kind",
+    "capture_policy_id"
+  ]
+}

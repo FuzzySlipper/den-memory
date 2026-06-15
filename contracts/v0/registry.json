@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/registry.json",
+  "contract_version": "v0",
+  "description": "Canonical Den Memories v0 vocabulary. Unknown values are rejected unless a later registry migration explicitly adds them.",
+  "layers": [
+    "source_evidence",
+    "candidate",
+    "curated_fact",
+    "identity_profile",
+    "topic_scene",
+    "operating_model",
+    "schema_model",
+    "intent_hypothesis"
+  ],
+  "scope_kinds": [
+    "global",
+    "project",
+    "space",
+    "profile",
+    "agent_instance",
+    "user",
+    "task",
+    "external"
+  ],
+  "authority_scope_kinds": [
+    "global",
+    "project",
+    "space",
+    "profile",
+    "agent_instance",
+    "user",
+    "task"
+  ],
+  "discovery_scopes": [
+    "same_project",
+    "linked_projects",
+    "global_discoverable",
+    "explicit_only"
+  ],
+  "claim_strengths": [
+    "observation",
+    "assessment",
+    "recommendation",
+    "policy"
+  ],
+  "capture_event_kinds": [
+    "turn",
+    "task_message",
+    "document_comment",
+    "worker_packet",
+    "tool_result",
+    "manual_note",
+    "imported_session"
+  ],
+  "runtimes": [
+    "hermes",
+    "pi_crew",
+    "den_core",
+    "manual",
+    "import"
+  ],
+  "session_kinds": [
+    "durable_agent",
+    "worker_assignment",
+    "assistant_delegate",
+    "cron",
+    "diagnostic",
+    "import"
+  ],
+  "runtime_roles": [
+    "planner",
+    "runner",
+    "reviewer",
+    "worker",
+    "assistant",
+    "human",
+    "sysadmin",
+    "auditor"
+  ],
+  "modes": [
+    "planning",
+    "implementation",
+    "review",
+    "ops",
+    "general",
+    "audit"
+  ],
+  "source_surfaces": [
+    "discord",
+    "den_channels",
+    "cli",
+    "api",
+    "worker_pool",
+    "import",
+    "test"
+  ],
+  "source_kinds": [
+    "den_task",
+    "den_document",
+    "den_message",
+    "den_review_finding",
+    "hermes_session",
+    "hermes_memory_file",
+    "pi_crew_session",
+    "pi_crew_assignment",
+    "pi_crew_run",
+    "url",
+    "file",
+    "manual_note",
+    "imported_transcript"
+  ],
+  "source_validation_states": [
+    "unverified",
+    "verified",
+    "broken",
+    "stale"
+  ],
+  "candidate_statuses": [
+    "pending",
+    "claimed",
+    "promoted",
+    "rejected",
+    "needs_split",
+    "needs_merge",
+    "superseded"
+  ],
+  "capture_policy_modes": [
+    "off",
+    "metadata_only",
+    "permissive_candidates",
+    "curated_manual_only"
+  ],
+  "capture_decisions": [
+    "captured",
+    "ignored",
+    "filtered",
+    "errored"
+  ],
+  "curation_actions": [
+    "claim",
+    "promote",
+    "reject",
+    "split",
+    "merge",
+    "supersede",
+    "rescope",
+    "relabel",
+    "link",
+    "unlink"
+  ],
+  "entry_statuses": [
+    "draft",
+    "active",
+    "disputed",
+    "superseded",
+    "deprecated",
+    "archived"
+  ],
+  "curation_states": [
+    "raw",
+    "candidate",
+    "claimed",
+    "curated",
+    "rejected",
+    "needs_split",
+    "needs_merge",
+    "needs_review"
+  ],
+  "confidence_levels": [
+    "unverified",
+    "inferred",
+    "source_backed",
+    "verified"
+  ],
+  "stability_levels": [
+    "volatile",
+    "evolving",
+    "stable",
+    "canonical"
+  ],
+  "audiences": [
+    "planner",
+    "runner",
+    "reviewer",
+    "worker",
+    "human",
+    "sysadmin",
+    "hermes",
+    "pi_crew",
+    "model_eval",
+    "auditor",
+    "any"
+  ],
+  "node_types": [
+    "concept",
+    "fact",
+    "decision",
+    "runbook",
+    "warning",
+    "failure_mode",
+    "pattern",
+    "anti_pattern",
+    "example",
+    "open_question",
+    "index",
+    "bundle",
+    "source_ref"
+  ],
+  "canonicality": [
+    "canonical",
+    "preferred",
+    "alternate",
+    "historical",
+    "superseded"
+  ],
+  "importance": [
+    "core",
+    "important",
+    "optional",
+    "niche"
+  ],
+  "edge_relations": [
+    "prerequisite",
+    "implementation_detail",
+    "operational_runbook",
+    "failure_mode",
+    "warning",
+    "evidence_for",
+    "contradicted_by",
+    "supersedes",
+    "historical_context",
+    "related_concept",
+    "example",
+    "review_risk",
+    "source_trace",
+    "owned_by_project",
+    "contextual_assessment"
+  ],
+  "edge_statuses": [
+    "active",
+    "disputed",
+    "deprecated"
+  ],
+  "view_types": [
+    "beginner_path",
+    "implementation_path",
+    "reviewer_path",
+    "ops_runbook",
+    "failure_modes",
+    "architecture_map",
+    "project_onboarding"
+  ],
+  "ordering_policies": [
+    "core_first_then_risks",
+    "score_desc",
+    "roots_then_edges",
+    "review_risk_first",
+    "ops_runbook_first"
+  ]
+}

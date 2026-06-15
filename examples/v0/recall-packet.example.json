@@ -1,0 +1,65 @@
+{
+  "packet_id": "recall_example_2467",
+  "packet_md": "# Guided recall example\n\nCross-runtime Den Memories contract guidance.",
+  "root_matches": [
+    {
+      "node_slug": "den-memories-v0-contract",
+      "match_kind": "authoritative",
+      "score": 138.0,
+      "why": "query and project match authority scope"
+    }
+  ],
+  "included_nodes": [
+    {
+      "slug": "den-memories-v0-contract",
+      "title": "Den Memories v0 contract",
+      "authority_scope": "project:den-memory",
+      "discovery_scope": "global_discoverable",
+      "claim_strength": "policy",
+      "interpretation": "Authoritative for den-memory implementation tasks."
+    },
+    {
+      "slug": "pi-crew-worker-memory-isolation",
+      "title": "pi-crew worker memory isolation warning",
+      "authority_scope": "project:pi-crew",
+      "discovery_scope": "global_discoverable",
+      "claim_strength": "recommendation",
+      "interpretation": "Discovered evidence, not den-memory policy."
+    }
+  ],
+  "included_edges": [
+    {
+      "from": "den-memories-v0-contract",
+      "to": "pi-crew-worker-memory-isolation",
+      "relation": "warning"
+    }
+  ],
+  "skipped": [
+    {
+      "node_slug": "legacy-gateway-memory-path",
+      "reason": "superseded"
+    }
+  ],
+  "warnings": [
+    "Cross-scope assessment included as discovered evidence only."
+  ],
+  "provenance": [
+    {
+      "source_kind": "den_task",
+      "source_project_id": "den-memory",
+      "source_id": "2467",
+      "source_locator": {
+        "task_id": 2467
+      },
+      "source_summary": "Task defining Den Memories v0 contract artifacts.",
+      "observed_at": "2026-06-15T00:00:00Z",
+      "verified_at": null,
+      "verification_status": "verified"
+    }
+  ],
+  "audit": {
+    "recall_log_id": 3001,
+    "scoring_profile": "v0-default",
+    "scoring_defaults_ref": "contracts/v0/scoring-defaults.json"
+  }
+}

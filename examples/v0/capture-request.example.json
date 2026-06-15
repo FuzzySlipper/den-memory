@@ -1,0 +1,44 @@
+{
+  "runtime_context": {
+    "runtime": "hermes",
+    "agent_identity": "den-mcp-runner",
+    "profile_id": "den-mcp-runner",
+    "agent_instance_id": null,
+    "session_id": "example-session",
+    "session_key": "task-2467",
+    "session_kind": "durable_agent",
+    "project_id": "den-memory",
+    "task_id": 2467,
+    "assignment_id": null,
+    "run_id": null,
+    "role": "runner",
+    "audience": [
+      "runner"
+    ],
+    "mode": "implementation",
+    "source_surface": "den_channels",
+    "user_id": null
+  },
+  "event_kind": "task_message",
+  "source_refs": [
+    {
+      "source_kind": "den_task",
+      "source_project_id": "den-memory",
+      "source_id": "2467",
+      "source_locator": {
+        "task_id": 2467
+      },
+      "source_summary": "Task defining Den Memories v0 contract artifacts.",
+      "observed_at": "2026-06-15T00:00:00Z",
+      "verified_at": null,
+      "verification_status": "verified"
+    }
+  ],
+  "raw_content": "Contract/schema/scoring constants were finalized for task #2467.",
+  "metadata": {
+    "contract_version": "v0"
+  },
+  "proposed_scope_kind": "project",
+  "proposed_scope_id": "den-memory",
+  "capture_policy_id": "default-durable-permissive-v0"
+}

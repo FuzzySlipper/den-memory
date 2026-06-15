@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/candidate.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "body_md": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "proposed_kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "claimed",
+        "promoted",
+        "rejected",
+        "needs_split",
+        "needs_merge",
+        "superseded"
+      ]
+    },
+    "common": {
+      "$ref": "memory-common.schema.json"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "source-ref.schema.json"
+      }
+    },
+    "extraction_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "created_by": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "title",
+    "body_md",
+    "proposed_kind",
+    "status",
+    "common",
+    "source_refs",
+    "created_by"
+  ]
+}

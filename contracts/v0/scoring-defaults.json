@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/scoring-defaults.json",
+  "contract_version": "v0",
+  "profile": "v0-default",
+  "description": "Named recall scoring defaults. These are implementation constants, not tuned truth; dogfood task #2477 owns later calibration.",
+  "root_match": {
+    "authoritative_scope_match": 100.0,
+    "discoverable_scope_match": 45.0,
+    "explicit_only_match": 25.0,
+    "same_project_scope_match": 30.0,
+    "linked_project_scope_match": 20.0
+  },
+  "penalties": {
+    "cross_scope_discovered_evidence": -18.0,
+    "authority_scope_mismatch": -30.0,
+    "audience_mismatch": -12.0,
+    "stale_source": -20.0,
+    "broken_source": -45.0,
+    "unverified_source": -8.0,
+    "superseded_status": -1000.0,
+    "deprecated_status": -250.0,
+    "archived_status": -1000.0
+  },
+  "claim_strength_modifier": {
+    "observation": 0.0,
+    "assessment": 8.0,
+    "recommendation": 16.0,
+    "policy": 30.0
+  },
+  "curation_modifier": {
+    "candidate": -20.0,
+    "claimed": -10.0,
+    "curated": 20.0,
+    "needs_review": -15.0,
+    "rejected": -1000.0,
+    "superseded": -1000.0
+  },
+  "confidence_modifier": {
+    "unverified": -8.0,
+    "inferred": -4.0,
+    "source_backed": 10.0,
+    "verified": 18.0
+  },
+  "source_validation_modifier": {
+    "unverified": -4.0,
+    "verified": 12.0,
+    "broken": -45.0,
+    "stale": -20.0
+  },
+  "edge_relation_modifier": {
+    "prerequisite": 16.0,
+    "implementation_detail": 12.0,
+    "operational_runbook": 14.0,
+    "failure_mode": 13.0,
+    "warning": 14.0,
+    "evidence_for": 8.0,
+    "contradicted_by": 10.0,
+    "supersedes": 12.0,
+    "historical_context": -4.0,
+    "related_concept": 2.0,
+    "example": 3.0,
+    "review_risk": 15.0,
+    "source_trace": 5.0,
+    "owned_by_project": 6.0,
+    "contextual_assessment": 7.0
+  },
+  "readback_required": true
+}

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/memory-common.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope_kind": {
+      "type": "string",
+      "enum": [
+        "global",
+        "project",
+        "space",
+        "profile",
+        "agent_instance",
+        "user",
+        "task",
+        "external"
+      ]
+    },
+    "scope_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "authority_scope_kind": {
+      "type": "string",
+      "enum": [
+        "global",
+        "project",
+        "space",
+        "profile",
+        "agent_instance",
+        "user",
+        "task"
+      ]
+    },
+    "authority_scope_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "discovery_scope": {
+      "type": "string",
+      "enum": [
+        "same_project",
+        "linked_projects",
+        "global_discoverable",
+        "explicit_only"
+      ]
+    },
+    "claim_strength": {
+      "type": "string",
+      "enum": [
+        "observation",
+        "assessment",
+        "recommendation",
+        "policy"
+      ]
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "source_evidence",
+        "candidate",
+        "curated_fact",
+        "identity_profile",
+        "topic_scene",
+        "operating_model",
+        "schema_model",
+        "intent_hypothesis"
+      ]
+    },
+    "audience": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "planner",
+          "runner",
+          "reviewer",
+          "worker",
+          "human",
+          "sysadmin",
+          "hermes",
+          "pi_crew",
+          "model_eval",
+          "auditor",
+          "any"
+        ]
+      }
+    }
+  },
+  "required": [
+    "scope_kind",
+    "authority_scope_kind",
+    "discovery_scope",
+    "claim_strength",
+    "layer"
+  ]
+}

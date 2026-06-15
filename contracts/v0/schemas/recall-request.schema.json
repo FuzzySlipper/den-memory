@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://den.local/schemas/den-memories/v0/recall-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_context": {
+      "$ref": "runtime-context.schema.json"
+    },
+    "topic_view_slug": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "budget_tokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "include_candidates": {
+      "type": "boolean"
+    },
+    "prefer_relations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "prerequisite",
+          "implementation_detail",
+          "operational_runbook",
+          "failure_mode",
+          "warning",
+          "evidence_for",
+          "contradicted_by",
+          "supersedes",
+          "historical_context",
+          "related_concept",
+          "example",
+          "review_risk",
+          "source_trace",
+          "owned_by_project",
+          "contextual_assessment"
+        ]
+      }
+    },
+    "exclude_status": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "active",
+          "disputed",
+          "superseded",
+          "deprecated",
+          "archived"
+        ]
+      }
+    }
+  },
+  "required": [
+    "query",
+    "runtime_context",
+    "budget_tokens",
+    "include_candidates"
+  ]
+}
