@@ -202,6 +202,106 @@ def insert_candidate(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
     return cid
 
 
+
+def require_actor_reason(payload: dict[str, Any]) -> tuple[str, str]:
+    actor = payload.get("actor_identity")
+    reason = payload.get("reason")
+    if not actor:
+        raise HTTPException(status_code=400, detail="actor_identity_required")
+    if not reason:
+        raise HTTPException(status_code=400, detail="reason_required")
+    return str(actor), str(reason)
+
+
+def update_candidate_fields(conn: sqlite3.Connection, candidate_id: int, updates: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"status", "proposed_slug", "title", "body_md", "summary", "proposed_kind", "scope_kind", "scope_id", "authority_scope_kind", "authority_scope_id", "discovery_scope", "claim_strength", "layer", "audience", "source_refs", "updated_by"}
+    set_parts: list[str] = []
+    params: list[Any] = []
+    for key, value in updates.items():
+        if key not in allowed:
+            continue
+        column = key
+        if key in {"audience", "source_refs"}:
+            column = f"{key}_json"
+            value = j(value)
+        set_parts.append(f"{column}=?")
+        params.append(value)
+    if not set_parts:
+        return decode_row(require(conn.execute("SELECT * FROM memory_candidates WHERE id=?", (candidate_id,)).fetchone(), "candidate"))
+    set_parts.append("updated_at=datetime('now')")
+    params.append(candidate_id)
+    execute_update(conn, f"UPDATE memory_candidates SET {', '.join(set_parts)} WHERE id=?", tuple(params))
+    row = decode_row(require(conn.execute("SELECT * FROM memory_candidates WHERE id=?", (candidate_id,)).fetchone(), "candidate"))
+    refresh_candidate_fts(conn, candidate_id, {
+        "title": row["title"],
+        "summary": row.get("summary", ""),
+        "body_md": row.get("body_md", ""),
+        "proposed_kind": row.get("proposed_kind", ""),
+    })
+    conn.commit()
+    return row
+
+
+def attach_candidate_source_refs(conn: sqlite3.Connection, *, candidate: dict[str, Any], entry_id: int, actor: str) -> list[int]:
+    ref_ids: list[int] = []
+    for source in candidate.get("source_refs", []) or []:
+        if not isinstance(source, dict):
+            continue
+        sid = execute_insert(
+            conn,
+            "INSERT INTO source_refs(target_kind,target_id,source_kind,source_project_id,source_id,source_locator_json,source_summary,observed_at,verified_at,verification_status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "memory_entry",
+                entry_id,
+                source.get("source_kind", "manual_note"),
+                source.get("source_project_id"),
+                source.get("source_id", str(candidate["id"])),
+                j(source.get("source_locator", {}), {}),
+                source.get("source_summary", candidate.get("summary", "")),
+                source.get("observed_at"),
+                source.get("verified_at"),
+                source.get("verification_status", "unverified"),
+                actor,
+            ),
+        )
+        ref_ids.append(sid)
+    return ref_ids
+
+
+def insert_memory_entry_from_candidate(conn: sqlite3.Connection, candidate: dict[str, Any], payload: dict[str, Any], actor: str) -> int:
+    slug = payload.get("slug") or candidate.get("proposed_slug") or f"candidate-{candidate['id']}"
+    entry = {
+        "slug": slug,
+        "title": payload.get("title", candidate["title"]),
+        "summary": payload.get("summary", candidate.get("summary", "")),
+        "body_md": payload.get("body_md", candidate.get("body_md", "")),
+        "kind": payload.get("kind", candidate.get("proposed_kind", "fact")),
+        "layer": payload.get("layer", "curated_fact"),
+        "scope_kind": payload.get("scope_kind", candidate.get("scope_kind", "global")),
+        "scope_id": payload.get("scope_id", candidate.get("scope_id")),
+        "authority_scope_kind": payload.get("authority_scope_kind", candidate.get("authority_scope_kind", "global")),
+        "authority_scope_id": payload.get("authority_scope_id", candidate.get("authority_scope_id")),
+        "discovery_scope": payload.get("discovery_scope", candidate.get("discovery_scope", "explicit_only")),
+        "claim_strength": payload.get("claim_strength", candidate.get("claim_strength", "observation")),
+        "status": "active",
+        "curation_state": "curated",
+        "confidence": payload.get("confidence", "source_backed"),
+        "stability": payload.get("stability", "evolving"),
+        "audience": payload.get("audience", candidate.get("audience", [])),
+        "tags": payload.get("tags", []),
+        "created_by": actor,
+        "updated_by": actor,
+    }
+    entry_id = execute_insert(conn, """
+        INSERT INTO memory_entries(slug,title,summary,body_md,content_format,kind,layer,scope_kind,scope_id,authority_scope_kind,authority_scope_id,discovery_scope,claim_strength,status,curation_state,confidence,stability,audience_json,tags_json,created_by,updated_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        entry["slug"], entry["title"], entry["summary"], entry["body_md"], "markdown", entry["kind"], entry["layer"], entry["scope_kind"], entry["scope_id"], entry["authority_scope_kind"], entry["authority_scope_id"], entry["discovery_scope"], entry["claim_strength"], entry["status"], entry["curation_state"], entry["confidence"], entry["stability"], j(entry["audience"]), j(entry["tags"]), actor, actor,
+    ))
+    refresh_entry_fts(conn, entry_id, entry)
+    return entry_id
+
+
 @router.post("/memory-entries")
 def create_entry(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     conn = db(request)
@@ -417,10 +517,10 @@ def create_edge(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.delete("/topic-edges/{edge_id}")
-def delete_edge(request: Request, edge_id: int, actor_identity: str = "api") -> dict[str, Any]:
+def delete_edge(request: Request, edge_id: int, actor_identity: str = "api", reason: str = "edge deleted") -> dict[str, Any]:
     conn = db(request)
     before = decode_row(require(conn.execute("SELECT * FROM topic_edges WHERE id=?", (edge_id,)).fetchone(), "topic_edge"))
-    log_curation(conn, action="unlink", actor=actor_identity, reason="edge deleted", before=before)
+    log_curation(conn, action="unlink", actor=actor_identity, reason=reason, before=before)
     conn.execute("DELETE FROM topic_edges WHERE id=?", (edge_id,))
     conn.commit()
     return {"deleted": True, "edge_id": edge_id}
@@ -456,6 +556,161 @@ def update_view(request: Request, slug: str, payload: dict[str, Any]) -> dict[st
     merged = {**current, **payload}
     execute_update(db(request), "UPDATE topic_views SET title=?,mode=?,max_depth=?,token_budget_hint=?,ordering_policy=?,status=?,updated_by=?,updated_at=datetime('now') WHERE slug=?", (merged["title"], merged.get("mode", "general"), merged.get("max_depth", 2), merged.get("token_budget_hint", 3000), merged.get("ordering_policy", "core_first_then_risks"), merged.get("status", "active"), payload.get("updated_by", "api"), slug))
     return get_view(request, slug)
+
+
+
+@router.post("/curation/candidates/{candidate_id}/claim")
+def claim_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_candidate(request, candidate_id)
+    after = update_candidate_fields(conn, candidate_id, {"status": "claimed", "updated_by": actor})
+    event_id = log_curation(conn, action="claim", actor=actor, reason=reason, candidate_id=candidate_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/{candidate_id}/reject")
+def reject_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_candidate(request, candidate_id)
+    after = update_candidate_fields(conn, candidate_id, {"status": "rejected", "updated_by": actor})
+    event_id = log_curation(conn, action="reject", actor=actor, reason=reason, candidate_id=candidate_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/{candidate_id}/promote")
+def promote_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_candidate(request, candidate_id)
+    if before["status"] not in {"pending", "claimed"}:
+        raise HTTPException(status_code=400, detail="candidate_not_promotable")
+    entry_id = insert_memory_entry_from_candidate(conn, before, payload, actor)
+    source_ref_ids = attach_candidate_source_refs(conn, candidate=before, entry_id=entry_id, actor=actor)
+    after_candidate = update_candidate_fields(conn, candidate_id, {"status": "promoted", "updated_by": actor})
+    entry = decode_row(conn.execute("SELECT * FROM memory_entries WHERE id=?", (entry_id,)).fetchone())
+    after = {"candidate": after_candidate, "memory_entry": entry, "source_ref_ids": source_ref_ids}
+    event_id = log_curation(conn, action="promote", actor=actor, reason=reason, candidate_id=candidate_id, memory_entry_id=entry_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after_candidate, "memory_entry": entry, "source_ref_ids": source_ref_ids, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/{candidate_id}/split")
+def split_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_candidate(request, candidate_id)
+    fragments = payload.get("fragments") or []
+    if len(fragments) < 2:
+        raise HTTPException(status_code=400, detail="at_least_two_fragments_required")
+    new_ids: list[int] = []
+    split_candidates: list[dict[str, Any]] = []
+    for fragment in fragments:
+        candidate = {**before, **fragment, "source_refs": fragment.get("source_refs", before.get("source_refs", [])), "created_by": actor, "updated_by": actor, "status": "pending", "layer": "candidate"}
+        candidate.pop("id", None)
+        new_id = insert_candidate(conn, candidate)
+        new_ids.append(new_id)
+        split_candidates.append(decode_row(conn.execute("SELECT * FROM memory_candidates WHERE id=?", (new_id,)).fetchone()))
+    after_original = update_candidate_fields(conn, candidate_id, {"status": "needs_split", "updated_by": actor})
+    after = {"original": after_original, "split_candidates": split_candidates}
+    event_id = log_curation(conn, action="split", actor=actor, reason=reason, candidate_id=candidate_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after_original, "split_candidate_ids": new_ids, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/merge")
+def merge_candidates(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    candidate_ids = payload.get("candidate_ids") or []
+    if len(candidate_ids) < 2:
+        raise HTTPException(status_code=400, detail="at_least_two_candidates_required")
+    before = [get_candidate(request, int(cid)) for cid in candidate_ids]
+    merged_sources: list[Any] = []
+    for item in before:
+        merged_sources.extend(item.get("source_refs", []) or [])
+    merged_payload = {
+        "title": payload.get("title") or " / ".join(item["title"] for item in before),
+        "summary": payload.get("summary") or "\n".join(item.get("summary", "") for item in before if item.get("summary")),
+        "body_md": payload.get("body_md") or "\n\n".join(item.get("body_md", "") for item in before if item.get("body_md")),
+        "proposed_kind": payload.get("proposed_kind", before[0].get("proposed_kind", "fact")),
+        "scope_kind": payload.get("scope_kind", before[0].get("scope_kind", "global")),
+        "scope_id": payload.get("scope_id", before[0].get("scope_id")),
+        "authority_scope_kind": payload.get("authority_scope_kind", before[0].get("authority_scope_kind", "global")),
+        "authority_scope_id": payload.get("authority_scope_id", before[0].get("authority_scope_id")),
+        "discovery_scope": payload.get("discovery_scope", before[0].get("discovery_scope", "explicit_only")),
+        "claim_strength": payload.get("claim_strength", before[0].get("claim_strength", "observation")),
+        "source_refs": merged_sources,
+        "created_by": actor,
+        "updated_by": actor,
+    }
+    merged_id = insert_candidate(conn, merged_payload)
+    updated_sources = []
+    for cid in candidate_ids:
+        updated_sources.append(update_candidate_fields(conn, int(cid), {"status": "needs_merge", "updated_by": actor}))
+    merged_candidate = get_candidate(request, merged_id)
+    after = {"merged_candidate": merged_candidate, "source_candidates": updated_sources}
+    event_id = log_curation(conn, action="merge", actor=actor, reason=reason, candidate_id=merged_id, before=before, after=after)
+    conn.commit()
+    return {"merged_candidate": merged_candidate, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/{candidate_id}/relabel")
+def relabel_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_candidate(request, candidate_id)
+    updates = {key: payload[key] for key in ("title", "summary", "body_md", "proposed_kind", "claim_strength", "audience") if key in payload}
+    updates["updated_by"] = actor
+    after = update_candidate_fields(conn, candidate_id, updates)
+    event_id = log_curation(conn, action="relabel", actor=actor, reason=reason, candidate_id=candidate_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after, "curation_event_id": event_id}
+
+
+@router.post("/curation/candidates/{candidate_id}/rescope")
+def rescope_candidate(request: Request, candidate_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    required = {"scope_kind", "authority_scope_kind", "discovery_scope", "claim_strength"}
+    missing = sorted(required - set(payload))
+    if missing:
+        raise HTTPException(status_code=400, detail={"missing": missing})
+    before = get_candidate(request, candidate_id)
+    updates = {key: payload.get(key) for key in ("scope_kind", "scope_id", "authority_scope_kind", "authority_scope_id", "discovery_scope", "claim_strength") if key in payload}
+    updates["updated_by"] = actor
+    after = update_candidate_fields(conn, candidate_id, updates)
+    event_id = log_curation(conn, action="rescope", actor=actor, reason=reason, candidate_id=candidate_id, before=before, after=after)
+    conn.commit()
+    return {"candidate": after, "curation_event_id": event_id}
+
+
+@router.post("/curation/memory-entries/{slug}/supersede")
+def curation_supersede_entry(request: Request, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    actor, reason = require_actor_reason(payload)
+    before = get_entry(request, slug)
+    execute_update(conn, "UPDATE memory_entries SET status='superseded', updated_by=?, updated_at=datetime('now') WHERE slug=?", (actor, slug))
+    after = get_entry(request, slug)
+    event_id = log_curation(conn, action="supersede", actor=actor, reason=reason, memory_entry_id=after["id"], before=before, after=after)
+    conn.commit()
+    return {"memory_entry": after, "curation_event_id": event_id}
+
+
+@router.post("/curation/topic-edges/link")
+def curation_link_edge(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor, reason = require_actor_reason(payload)
+    payload = {**payload, "created_by": actor, "reason": reason}
+    return create_edge(request, payload)
+
+
+@router.post("/curation/topic-edges/{edge_id}/unlink")
+def curation_unlink_edge(request: Request, edge_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    actor, reason = require_actor_reason(payload)
+    return delete_edge(request, edge_id, actor_identity=actor, reason=reason)
 
 
 @router.post("/source-refs")
@@ -499,8 +754,21 @@ def get_capture_event(request: Request, event_id: int) -> dict[str, Any]:
 
 
 @router.get("/curation-events")
-def list_curation_events(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
-    return list_event_table(request, "curation_events", limit)
+def list_curation_events(request: Request, action: str | None = None, actor_identity: str | None = None, reason_contains: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    clauses = []
+    params: list[Any] = []
+    if action:
+        clauses.append("action=?")
+        params.append(action)
+    if actor_identity:
+        clauses.append("actor_identity=?")
+        params.append(actor_identity)
+    if reason_contains:
+        clauses.append("reason LIKE ?")
+        params.append(f"%{reason_contains}%")
+    sql = "SELECT * FROM curation_events" + (" WHERE " + " AND ".join(clauses) if clauses else "") + " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    return {"items": rows(db(request).execute(sql, tuple(params)))}
 
 
 @router.get("/curation-events/{event_id}")
