@@ -102,6 +102,106 @@ def refresh_node_fts(conn: sqlite3.Connection, rowid: int, payload: dict[str, An
     conn.execute("INSERT INTO topic_nodes_fts(rowid,slug,title,summary) VALUES (?,?,?,?)", (rowid, payload.get("slug",""), payload.get("title",""), payload.get("summary","")))
 
 
+
+CAPTURE_MODES = {"off", "metadata_only", "permissive_candidates", "curated_manual_only"}
+CAPTURE_DECISIONS = {"captured", "ignored", "filtered", "errored"}
+SECRET_MARKERS = ("BEGIN PRIVATE KEY", "BEGIN RSA PRIVATE KEY", "api_key=", "xoxb-", "ghp_", "sk-")
+
+
+def default_capture_mode(runtime: str, actor_role: str | None = None) -> str:
+    role = (actor_role or "").lower()
+    runtime = (runtime or "manual").lower()
+    if role == "auditor" or runtime == "audit":
+        return "off"
+    if role == "worker" or runtime in {"worker", "subagent"}:
+        return "metadata_only"
+    return "permissive_candidates"
+
+
+def log_capture(
+    conn: sqlite3.Connection,
+    *,
+    payload: dict[str, Any],
+    decision: str,
+    reason: str,
+    candidate_ids: list[int] | None = None,
+    raw_size: int | None = None,
+    extracted_size: int | None = None,
+) -> int:
+    candidate_ids = candidate_ids or []
+    body = str(payload.get("body_md") or payload.get("raw_text") or payload.get("content") or "")
+    summary = str(payload.get("summary") or "")
+    return execute_insert(
+        conn,
+        """INSERT INTO capture_events(event_kind,source_refs_json,actor_identity,runtime,proposed_scope_kind,proposed_scope_id,capture_policy_id,decision,reason,candidate_ids_json,raw_size,extracted_size) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            payload.get("event_kind", "manual_note"),
+            j(payload.get("source_refs", [])),
+            payload.get("actor_identity") or payload.get("created_by", "api"),
+            payload.get("runtime", "manual"),
+            payload.get("scope_kind", "global"),
+            payload.get("scope_id"),
+            payload.get("capture_policy_id", "api-capture"),
+            decision,
+            reason,
+            j(candidate_ids),
+            raw_size if raw_size is not None else len(body),
+            extracted_size if extracted_size is not None else len(summary),
+        ),
+    )
+
+
+def candidate_payload_from_capture(payload: dict[str, Any]) -> dict[str, Any]:
+    body = str(payload.get("body_md") or payload.get("raw_text") or payload.get("content") or "")
+    title = payload.get("title") or body.strip().splitlines()[0][:80] or "Captured memory candidate"
+    summary = payload.get("summary") or (body.strip()[:180] if body.strip() else title)
+    return {
+        "proposed_slug": payload.get("proposed_slug"),
+        "title": title,
+        "body_md": body,
+        "summary": summary,
+        "proposed_kind": payload.get("proposed_kind", payload.get("kind", "fact")),
+        "layer": "candidate",
+        "scope_kind": payload.get("scope_kind", "global"),
+        "scope_id": payload.get("scope_id"),
+        "authority_scope_kind": payload.get("authority_scope_kind", payload.get("scope_kind", "global")),
+        "authority_scope_id": payload.get("authority_scope_id", payload.get("scope_id")),
+        "discovery_scope": payload.get("discovery_scope", "explicit_only"),
+        "claim_strength": payload.get("claim_strength", "observation"),
+        "audience": payload.get("audience", []),
+        "source_refs": payload.get("source_refs", []),
+        "extraction_confidence": payload.get("extraction_confidence"),
+        "status": "pending",
+        "created_by": payload.get("actor_identity") or payload.get("created_by", "api"),
+        "updated_by": payload.get("actor_identity") or payload.get("created_by", "api"),
+    }
+
+
+def validate_capture_candidate(candidate: dict[str, Any]) -> str | None:
+    if not str(candidate.get("body_md") or candidate.get("summary") or candidate.get("title") or "").strip():
+        return "empty_capture_content"
+    text = "\n".join(str(candidate.get(key, "")) for key in ("title", "summary", "body_md"))
+    if any(marker.lower() in text.lower() for marker in SECRET_MARKERS):
+        return "secret_like_content_filtered"
+    if candidate.get("claim_strength") == "policy":
+        return "policy_strength_capture_filtered"
+    return None
+
+
+def insert_candidate(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
+    if payload.get("status") and payload.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="candidate_create_status_must_be_pending")
+    if payload.get("layer") and payload.get("layer") != "candidate":
+        raise HTTPException(status_code=400, detail="candidate_create_layer_must_be_candidate")
+    if payload.get("claim_strength") == "policy":
+        raise HTTPException(status_code=400, detail="candidate_create_cannot_use_policy_claim_strength")
+    payload = {**payload, "status": "pending", "layer": "candidate"}
+    cid = execute_insert(conn, """INSERT INTO memory_candidates(proposed_slug,title,body_md,summary,proposed_kind,layer,scope_kind,scope_id,authority_scope_kind,authority_scope_id,discovery_scope,claim_strength,audience_json,source_refs_json,extraction_confidence,status,created_by,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+        payload.get("proposed_slug"), payload["title"], payload.get("body_md", ""), payload.get("summary", ""), payload["proposed_kind"], "candidate", payload.get("scope_kind", "global"), payload.get("scope_id"), payload.get("authority_scope_kind", "global"), payload.get("authority_scope_id"), payload.get("discovery_scope", "explicit_only"), payload.get("claim_strength", "observation"), j(payload.get("audience", [])), j(payload.get("source_refs", [])), payload.get("extraction_confidence"), "pending", payload.get("created_by", "api"), payload.get("updated_by", payload.get("created_by", "api"))))
+    refresh_candidate_fts(conn, cid, payload)
+    return cid
+
+
 @router.post("/memory-entries")
 def create_entry(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     conn = db(request)
@@ -159,15 +259,68 @@ def search_entries(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
 @router.post("/candidates")
 def create_candidate(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     conn = db(request)
-    cid = execute_insert(conn, """INSERT INTO memory_candidates(proposed_slug,title,body_md,summary,proposed_kind,layer,scope_kind,scope_id,authority_scope_kind,authority_scope_id,discovery_scope,claim_strength,audience_json,source_refs_json,extraction_confidence,status,created_by,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-        payload.get("proposed_slug"), payload["title"], payload.get("body_md", ""), payload.get("summary", ""), payload["proposed_kind"], payload.get("layer", "candidate"), payload.get("scope_kind", "global"), payload.get("scope_id"), payload.get("authority_scope_kind", "global"), payload.get("authority_scope_id"), payload.get("discovery_scope", "explicit_only"), payload.get("claim_strength", "observation"), j(payload.get("audience", [])), j(payload.get("source_refs", [])), payload.get("extraction_confidence"), payload.get("status", "pending"), payload.get("created_by", "api"), payload.get("updated_by", payload.get("created_by", "api"))))
-    refresh_candidate_fts(conn, cid, payload)
-    capture_id = execute_insert(conn, """INSERT INTO capture_events(event_kind,source_refs_json,actor_identity,runtime,proposed_scope_kind,proposed_scope_id,capture_policy_id,decision,reason,candidate_ids_json,raw_size,extracted_size) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (
-        payload.get("event_kind", "manual_note"), j(payload.get("source_refs", [])), payload.get("created_by", "api"), payload.get("runtime", "manual"), payload.get("scope_kind", "global"), payload.get("scope_id"), payload.get("capture_policy_id", "api-candidate-create"), "captured", payload.get("reason", "candidate created"), j([cid]), len(payload.get("body_md", "")), len(payload.get("summary", ""))))
+    cid = insert_candidate(conn, payload)
+    capture_id = log_capture(
+        conn,
+        payload={**payload, "actor_identity": payload.get("created_by", "api"), "capture_policy_id": payload.get("capture_policy_id", "api-candidate-create")},
+        decision="captured",
+        reason=payload.get("reason", "candidate created"),
+        candidate_ids=[cid],
+    )
     conn.commit()
     item = decode_row(conn.execute("SELECT * FROM memory_candidates WHERE id=?", (cid,)).fetchone())
     item["capture_event_id"] = capture_id
     return item
+
+
+@router.post("/capture")
+def capture(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    runtime = payload.get("runtime", "manual")
+    capture_mode = payload.get("capture_mode") or default_capture_mode(runtime, payload.get("actor_role"))
+    if capture_mode not in CAPTURE_MODES:
+        event_id = log_capture(conn, payload=payload, decision="errored", reason="invalid_capture_mode")
+        conn.commit()
+        return {"decision": "errored", "reason": "invalid_capture_mode", "capture_event_id": event_id, "candidate_ids": []}
+    if payload.get("simulate_error") or payload.get("force_error"):
+        event_id = log_capture(conn, payload=payload, decision="errored", reason=payload.get("reason", "simulated_capture_error"))
+        conn.commit()
+        return {"decision": "errored", "reason": payload.get("reason", "simulated_capture_error"), "capture_event_id": event_id, "candidate_ids": []}
+    if capture_mode == "off":
+        event_id = log_capture(conn, payload=payload, decision="ignored", reason=payload.get("reason", "capture_mode_off"))
+        conn.commit()
+        return {"decision": "ignored", "reason": payload.get("reason", "capture_mode_off"), "capture_event_id": event_id, "candidate_ids": []}
+    if capture_mode == "metadata_only":
+        event_id = log_capture(conn, payload=payload, decision="ignored", reason=payload.get("reason", "metadata_only"), raw_size=0, extracted_size=0)
+        conn.commit()
+        return {"decision": "ignored", "reason": payload.get("reason", "metadata_only"), "capture_event_id": event_id, "candidate_ids": []}
+    if capture_mode == "curated_manual_only":
+        event_id = log_capture(conn, payload=payload, decision="ignored", reason=payload.get("reason", "curated_manual_only"))
+        conn.commit()
+        return {"decision": "ignored", "reason": payload.get("reason", "curated_manual_only"), "capture_event_id": event_id, "candidate_ids": []}
+
+    candidate = candidate_payload_from_capture(payload)
+    filter_reason = validate_capture_candidate(candidate)
+    if filter_reason:
+        event_id = log_capture(conn, payload=payload, decision="filtered", reason=payload.get("reason", filter_reason))
+        conn.commit()
+        return {"decision": "filtered", "reason": payload.get("reason", filter_reason), "capture_event_id": event_id, "candidate_ids": []}
+
+    try:
+        cid = insert_candidate(conn, candidate)
+    except HTTPException as exc:
+        event_id = log_capture(conn, payload=payload, decision="errored", reason=str(exc.detail))
+        conn.commit()
+        return {"decision": "errored", "reason": str(exc.detail), "capture_event_id": event_id, "candidate_ids": []}
+    event_id = log_capture(conn, payload=payload, decision="captured", reason=payload.get("reason", "captured candidate"), candidate_ids=[cid])
+    conn.commit()
+    return {
+        "decision": "captured",
+        "reason": payload.get("reason", "captured candidate"),
+        "capture_event_id": event_id,
+        "candidate_ids": [cid],
+        "candidate": decode_row(conn.execute("SELECT * FROM memory_candidates WHERE id=?", (cid,)).fetchone()),
+    }
 
 
 @router.get("/candidates")
@@ -332,6 +485,11 @@ def get_event_row(request: Request, table: str, event_id: int, label: str) -> di
 
 @router.get("/capture-events")
 def list_capture_events(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    return list_event_table(request, "capture_events", limit)
+
+
+@router.get("/capture-events/recent")
+def recent_capture_events(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
     return list_event_table(request, "capture_events", limit)
 
 
