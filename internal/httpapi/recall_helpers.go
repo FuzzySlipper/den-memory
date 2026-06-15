@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"den-memories/internal/store"
@@ -19,6 +20,7 @@ func (h *Handler) traverseTopicEdges(roots []store.Record, view store.Record, po
 	include := stringSet(valueOrDefault(policy["include_relations"], viewValue(view, "include_relations", []any{})))
 	exclude := stringSet(valueOrDefault(policy["exclude_relations"], viewValue(view, "exclude_relations", []any{})))
 	maxDepth := intFromAny(valueOrDefault(policy["max_depth"], viewValue(view, "max_depth", 1)), 1)
+	orderingPolicy := stringValue(valueOrDefault(policy["ordering_policy"], viewValue(view, "ordering_policy", "core_first_then_risks")), "core_first_then_risks")
 	if maxDepth <= 0 {
 		return nil, nil
 	}
@@ -39,7 +41,7 @@ func (h *Handler) traverseTopicEdges(roots []store.Record, view store.Record, po
 		if item.depth >= maxDepth {
 			continue
 		}
-		rows, err := store.QueryAll(nilContext(), h.store.DB(), `SELECT e.*, n.* FROM topic_edges e JOIN topic_nodes n ON n.id=e.to_node_id WHERE e.from_node_id=? AND e.status='active' ORDER BY e.priority DESC, e.id`, item.id)
+		rows, err := store.QueryAll(nilContext(), h.store.DB(), `SELECT e.*, n.* FROM topic_edges e JOIN topic_nodes n ON n.id=e.to_node_id WHERE e.from_node_id=? AND e.status='active' `+topicEdgeOrderClause(orderingPolicy), item.id)
 		if err != nil {
 			return nil, err
 		}
@@ -170,6 +172,78 @@ func take(items []map[string]any, limit int) []map[string]any {
 		return items[:limit]
 	}
 	return items
+}
+
+func topicEdgeOrderClause(orderingPolicy string) string {
+	switch orderingPolicy {
+	case "review_risk_first":
+		return "ORDER BY CASE e.relation WHEN 'review_risk' THEN 0 WHEN 'warning' THEN 1 WHEN 'failure_mode' THEN 2 ELSE 9 END, e.priority DESC, e.id"
+	case "ops_runbook_first":
+		return "ORDER BY CASE e.relation WHEN 'operational_runbook' THEN 0 WHEN 'prerequisite' THEN 1 ELSE 9 END, e.priority DESC, e.id"
+	case "roots_then_edges", "score_desc":
+		return "ORDER BY e.priority DESC, e.id"
+	default:
+		return "ORDER BY CASE e.relation WHEN 'prerequisite' THEN 0 WHEN 'implementation_detail' THEN 1 WHEN 'failure_mode' THEN 2 WHEN 'warning' THEN 3 ELSE 9 END, e.priority DESC, e.id"
+	}
+}
+
+func applyNodeOrdering(nodes []map[string]any, orderingPolicy string) {
+	switch orderingPolicy {
+	case "roots_then_edges":
+		sort.SliceStable(nodes, func(i, j int) bool {
+			return intFromAny(nodes[i]["edge_depth"], 0) < intFromAny(nodes[j]["edge_depth"], 0)
+		})
+	default:
+		sort.SliceStable(nodes, func(i, j int) bool {
+			return floatFromAny(nodes[i]["score"]) > floatFromAny(nodes[j]["score"])
+		})
+	}
+}
+
+func estimatedTokens(text string) int {
+	if text == "" {
+		return 0
+	}
+	return (len(text) + 3) / 4
+}
+
+func requestedTokenBudget(payload map[string]any, view store.Record) int {
+	budget := intField(payload, "token_budget", 0)
+	if budget == 0 {
+		budget = intField(payload, "budget_tokens", 0)
+	}
+	if budget == 0 {
+		budget = intFromAny(viewValue(view, "token_budget_hint", 3000), 3000)
+	}
+	if budget <= 0 {
+		return 3000
+	}
+	return budget
+}
+
+func applyPacketBudget(nodes []map[string]any, skipped []map[string]any, budget int) ([]map[string]any, []map[string]any) {
+	if budget <= 0 {
+		return nodes, skipped
+	}
+	// Reserve a small fixed overhead for headings, skipped/warnings, and audit metadata.
+	remaining := budget - 24
+	if remaining <= 0 {
+		for _, node := range nodes {
+			skipped = append(skipped, map[string]any{"node_slug": node["slug"], "reason": "token_budget_truncated"})
+		}
+		return []map[string]any{}, skipped
+	}
+	kept := []map[string]any{}
+	for _, node := range nodes {
+		estimate := estimatedTokens(fmt.Sprintf("%v %v %v", node["title"], node["slug"], node["summary"]))
+		if estimate > remaining {
+			skipped = append(skipped, map[string]any{"node_slug": node["slug"], "reason": "token_budget_truncated"})
+			continue
+		}
+		remaining -= estimate
+		kept = append(kept, node)
+	}
+	return kept, skipped
 }
 
 func stringSet(value any) map[string]struct{} {

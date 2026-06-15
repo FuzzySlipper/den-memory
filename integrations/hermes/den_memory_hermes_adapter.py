@@ -153,7 +153,7 @@ class DenMemoryHermesProvider:
         if not self.enabled:
             return []
         return [
-            self._schema("den_memory_recall", "Read-only guided recall packet from Den Memories.", {"query": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "topic_view_slug": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["query"]),
+            self._schema("den_memory_recall", "Read-only guided recall packet from Den Memories.", {"query": {"type": "string"}, "budget_tokens": {"type": "integer", "minimum": 1}, "include_candidates": {"type": "boolean"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "topic_view_slug": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["query", "budget_tokens", "include_candidates"]),
             self._schema("den_memory_read", "Read a Den Memories entry by slug.", {"slug": {"type": "string"}}, ["slug"]),
             self._schema("den_memory_search", "Search Den Memories entries and candidates.", {"query": {"type": "string"}, "include_candidates": {"type": "boolean"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["query"]),
             self._schema("den_memory_store_candidate", "Create a pending Den Memories candidate only; never promotes curated memory.", {"title": {"type": "string"}, "body_md": {"type": "string"}, "summary": {"type": "string"}, "proposed_kind": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "authority_scope_kind": {"type": "string"}, "authority_scope_id": {"type": "string"}, "discovery_scope": {"type": "string"}, "claim_strength": {"type": "string"}, "source_refs": {"type": "array", "items": {"type": "object"}}}, ["title", "body_md", "proposed_kind"]),
@@ -170,7 +170,14 @@ class DenMemoryHermesProvider:
         if not self.enabled:
             return json.dumps({"ok": False, "error": "den_memory_provider_disabled"})
         if tool_name == "den_memory_recall":
-            payload = {**args, "runtime_context": self.runtime_context, "scope_kind": args.get("scope_kind") or "project", "scope_id": args.get("scope_id") or self.runtime_context.get("project_id")}
+            payload = {
+                **args,
+                "runtime_context": self.runtime_context,
+                "budget_tokens": args.get("budget_tokens", 3000),
+                "include_candidates": args.get("include_candidates", False),
+                "scope_kind": args.get("scope_kind") or "project",
+                "scope_id": args.get("scope_id") or self.runtime_context.get("project_id"),
+            }
             return json.dumps(self._safe_call("POST", "/api/recall", payload), sort_keys=True)
         if tool_name == "den_memory_read":
             return json.dumps(self._safe_call("GET", f"/api/memory-entries/{urllib.parse.quote(str(args['slug']))}"), sort_keys=True)

@@ -3,8 +3,6 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
-	"sort"
-	"strings"
 
 	"den-memories/internal/recall"
 	"den-memories/internal/store"
@@ -111,9 +109,12 @@ func (h *Handler) recall(w http.ResponseWriter, r *http.Request) {
 			"scope_id": node["scope_id"], "authority_scope_kind": node["authority_scope_kind"], "authority_scope_id": node["authority_scope_id"],
 		})
 	}
-	sort.SliceStable(includedNodes, func(i, j int) bool {
-		return floatFromAny(includedNodes[i]["score"]) > floatFromAny(includedNodes[j]["score"])
-	})
+	orderingPolicy := stringValue(valueOrDefault(payload["ordering_policy"], viewValue(view, "ordering_policy", "score_desc")), "score_desc")
+	applyNodeOrdering(includedNodes, orderingPolicy)
+	var budgetedSkipped []map[string]any
+	budget := requestedTokenBudget(payload, view)
+	includedNodes, budgetedSkipped = applyPacketBudget(take(includedNodes, limit), skipped, budget)
+	skipped = budgetedSkipped
 	packetID := stringField(payload, "packet_id", "")
 	if packetID == "" {
 		count := 0
@@ -121,7 +122,7 @@ func (h *Handler) recall(w http.ResponseWriter, r *http.Request) {
 		packetID = fmt.Sprintf("recall-%d", count+1)
 	}
 	packet := map[string]any{
-		"packet_id": packetID, "packet_md": "", "root_matches": rootMatches, "included_nodes": take(includedNodes, limit),
+		"packet_id": packetID, "packet_md": "", "root_matches": rootMatches, "included_nodes": includedNodes,
 		"included_edges": includedEdges, "skipped": skipped, "warnings": warnings, "provenance": provenance,
 		"audit": map[string]any{"scoring_profile": h.scoring.Defaults["profile"], "scoring_defaults_ref": "contracts/v0/scoring-defaults.json"},
 	}
@@ -129,7 +130,7 @@ func (h *Handler) recall(w http.ResponseWriter, r *http.Request) {
 	logID, err := store.Insert(ctx, h.store.DB(), `INSERT INTO recall_logs(packet_id,request_json,root_node_ids_json,included_node_ids_json,skipped_json,warnings_json,scoring_profile,token_budget,estimated_tokens,created_by,packet_json)
 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		packetID, mustJSONObject(payload), mustJSON(nodeIDs(rootNodes), []any{}), mustJSON(includedTopicNodeIDs(includedNodes), []any{}),
-		mustJSON(skipped, []any{}), mustJSON(warnings, []any{}), h.scoring.Defaults["profile"], payload["token_budget"], len(strings.Fields(stringValue(packet["packet_md"], ""))), payload["actor_identity"], "{}")
+		mustJSON(skipped, []any{}), mustJSON(warnings, []any{}), h.scoring.Defaults["profile"], budget, estimatedTokens(stringValue(packet["packet_md"], "")), payload["actor_identity"], "{}")
 	if err != nil {
 		writeError(w, err)
 		return

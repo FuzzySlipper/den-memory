@@ -138,6 +138,11 @@ func (h *Handler) doctorIssues() ([]map[string]any, error) {
 	if len(secretIDs) > 0 {
 		issues = append(issues, map[string]any{"kind": "secret_like_strings", "severity": "critical", "summary": "Secret/token-like strings found in memory text", "count": len(secretIDs), "ids": secretIDs, "details": map[string]any{"markers_checked": secretMarkers}})
 	}
+	ftsIssues, err := h.ftsDriftIssues()
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, ftsIssues...)
 	return issues, nil
 }
 
@@ -172,6 +177,35 @@ func (h *Handler) secretLikeIDs() ([]any, error) {
 		}
 	}
 	return ids, nil
+}
+
+func (h *Handler) ftsDriftIssues() ([]map[string]any, error) {
+	checks := []struct {
+		kind        string
+		sourceTable string
+		ftsTable    string
+	}{
+		{"memory_entries_fts_drift", "memory_entries", "memory_entries_fts"},
+		{"memory_candidates_fts_drift", "memory_candidates", "memory_candidates_fts"},
+		{"topic_nodes_fts_drift", "topic_nodes", "topic_nodes_fts"},
+	}
+	issues := []map[string]any{}
+	for _, check := range checks {
+		missing, err := idsFor(h, fmt.Sprintf("SELECT id FROM %s WHERE id NOT IN (SELECT rowid FROM %s)", check.sourceTable, check.ftsTable))
+		if err != nil {
+			return nil, err
+		}
+		extra, err := idsFor(h, fmt.Sprintf("SELECT rowid AS id FROM %s WHERE rowid NOT IN (SELECT id FROM %s)", check.ftsTable, check.sourceTable))
+		if err != nil {
+			return nil, err
+		}
+		if len(missing)+len(extra) == 0 {
+			continue
+		}
+		ids := append(append([]any{}, missing...), extra...)
+		issues = append(issues, issue(check.kind, "warning", "FTS index row ids drifted from source table", ids, map[string]any{"source_table": check.sourceTable, "fts_table": check.ftsTable, "missing_fts_row_ids": missing, "extra_fts_row_ids": extra}))
+	}
+	return issues, nil
 }
 
 func issue(kind string, severity string, summary string, ids []any, details map[string]any) map[string]any {

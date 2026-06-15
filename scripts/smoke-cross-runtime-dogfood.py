@@ -266,7 +266,7 @@ def hermes_adapter_smoke(base_url: str) -> dict[str, Any]:
         mode="implementation",
         platform="dogfood-smoke",
     )
-    recall_result = json.loads(provider.handle_tool_call("den_memory_recall", {"query": QUERY, "scope_kind": "project", "scope_id": "den-memory"}))
+    recall_result = json.loads(provider.handle_tool_call("den_memory_recall", {"query": QUERY, "budget_tokens": 3000, "include_candidates": False, "scope_kind": "project", "scope_id": "den-memory"}))
     capture_result = json.loads(provider.handle_tool_call("den_memory_capture_event", {
         "raw_text": "Hermes adapter dogfood capture candidate for task 2477",
         "title": "Hermes adapter dogfood capture",
@@ -285,11 +285,9 @@ const adapter = PiCrewDenMemoryAdapter.fromContext(client, {{
   projectId: 'den-memory', taskId: 2477, assignmentId: 'task-2477-assignment', runId: 'task-2477-run',
   role: 'worker', mode: 'implementation'
 }});
-const recall = await adapter.callTool('den_memory_recall', {{ query: {json.dumps(QUERY)} }});
-const workerCapture = await adapter.callTool('den_memory_capture_event', {{ raw_text: 'pi-crew worker metadata-only dogfood capture', title: 'pi worker metadata capture' }});
-const permissive = new PiCrewDenMemoryAdapter({{ client, runtimeContext: adapter.runtimeContext, captureMode: 'permissive_candidates' }});
-const candidateCapture = await permissive.callTool('den_memory_capture_event', {{ raw_text: 'pi-crew explicit task-handoff dogfood candidate', title: 'pi explicit candidate', summary: 'pi explicit candidate', event_kind: 'manual_note' }});
-console.log(JSON.stringify({{ recall, workerCapture, candidateCapture }}));
+const recall = await adapter.callTool('den_memory_recall', {{ query: {json.dumps(QUERY)}, budget_tokens: 3000, include_candidates: false }});
+const storedCandidate = await adapter.callTool('den_memory_store_candidate', {{ title: 'pi explicit candidate', body_md: 'pi-crew explicit task-handoff dogfood candidate', summary: 'pi explicit candidate', proposed_kind: 'fact' }});
+console.log(JSON.stringify({{ recall, storedCandidate }}));
 """
     completed = subprocess.run(
         ["node", "--input-type=module"],
@@ -376,8 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "captures": {
             "hermes": hermes["capture"],
-            "pi_worker_default": pi["workerCapture"],
-            "pi_permissive": pi["candidateCapture"],
+            "pi_store_candidate": pi.get("storedCandidate") or pi.get("stored_candidate"),
         },
         "semantics_match": semantics_match,
         "observability_summary": summary,
@@ -403,8 +400,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     for key, value in report["seed"].items():
         lines.append(f"- seed.{key}: `{value}`")
     lines.append(f"- hermes capture: `{report['captures']['hermes'].get('data', {}).get('capture_event_id')}`")
-    lines.append(f"- pi worker default capture decision: `{report['captures']['pi_worker_default'].get('data', {}).get('decision')}` reason `{report['captures']['pi_worker_default'].get('data', {}).get('reason')}`")
-    lines.append(f"- pi permissive capture event: `{report['captures']['pi_permissive'].get('data', {}).get('capture_event_id')}`")
+    lines.append(f"- pi store candidate ok: `{report['captures']['pi_store_candidate'].get('ok')}`")
     lines.extend(["", "## Independent audit", f"- audit export: `{report['audit_export']}`", f"- audit report: `{report['audit_report']}`", f"- doctor issue kinds: `{report['doctor_issue_kinds']}`"])
     lines.extend(["", "## Dogfood findings"])
     if report["dogfood_findings"]:
