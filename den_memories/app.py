@@ -10,6 +10,7 @@ from . import __version__
 from .config import Settings
 from .db import apply_migrations, connect, table_names
 from .registry import load_registry, load_scoring_defaults
+from .api import router as api_router
 
 REQUIRED_V0_TABLES = {
     "memory_entries",
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Den Memories", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.include_router(api_router)
 
     @app.get("/health")
     def health() -> dict[str, Any]:

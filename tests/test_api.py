@@ -20,7 +20,7 @@ def test_health_and_version_endpoints_initialize_schema(tmp_path):
         body = version.json()
         assert body["service"] == "den-memories"
         assert body["contract_version"] == "v0"
-        assert body["migrations"] == ["001_v0_schema"]
+        assert body["migrations"] == ["001_v0_schema", "002_candidate_fts"]
         assert body["registry_version"] == "v0"
         assert body["scoring_profile"] == "v0-default"
 

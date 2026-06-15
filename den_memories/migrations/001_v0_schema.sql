@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS curation_events (
   candidate_id INTEGER REFERENCES memory_candidates(id),
   memory_entry_id INTEGER REFERENCES memory_entries(id),
   node_id INTEGER REFERENCES topic_nodes(id),
-  edge_id INTEGER REFERENCES topic_edges(id),
+  edge_id INTEGER REFERENCES topic_edges(id) ON DELETE SET NULL,
   action TEXT NOT NULL CHECK (action IN ('claim','promote','reject','split','merge','supersede','rescope','relabel','link','unlink')),
   actor_identity TEXT NOT NULL,
   reason TEXT NOT NULL DEFAULT '',
