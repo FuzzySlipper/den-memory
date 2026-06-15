@@ -62,4 +62,4 @@ Schemas and examples include capture, curation/curated candidate state, recall p
 go run ./cmd/den-memory-validate
 ```
 
-Expected: pytest passes all contract/example/enum tests.
+Expected: Go validation passes all contract/example/enum tests.

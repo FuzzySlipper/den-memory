@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 
 	"den-memories/internal/store"
@@ -36,6 +37,12 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 	if err := refreshEntryFTS(ctx, tx, id, payload); err != nil {
 		writeError(w, err)
 		return
+	}
+	if sources := listField(payload, "source_refs"); len(sources) > 0 {
+		if _, err := attachSourceRefs(ctx, tx, sources, "memory_entry", id, stringField(payload, "created_by", "api"), stringField(payload, "summary", ""), stringField(payload, "slug", fmt.Sprint(id))); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	action := "relabel"
 	if stringField(payload, "curation_state", "") == "curated" {

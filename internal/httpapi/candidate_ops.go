@@ -133,6 +133,10 @@ func attachCandidateSourceRefs(ctx context.Context, r store.Runner, candidate st
 	if !ok {
 		return nil, nil
 	}
+	return attachSourceRefs(ctx, r, sources, "memory_entry", entryID, actor, stringValue(candidate["summary"], ""), fmt.Sprint(candidate["id"]))
+}
+
+func attachSourceRefs(ctx context.Context, r store.Runner, sources []any, targetKind string, targetID int64, actor string, fallbackSummary string, fallbackSourceID string) ([]int64, error) {
 	refIDs := []int64{}
 	for _, item := range sources {
 		source, ok := item.(map[string]any)
@@ -141,9 +145,9 @@ func attachCandidateSourceRefs(ctx context.Context, r store.Runner, candidate st
 		}
 		id, err := store.Insert(ctx, r, `INSERT INTO source_refs(target_kind,target_id,source_kind,source_project_id,source_id,source_locator_json,source_summary,observed_at,verified_at,verification_status,created_by)
 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-			"memory_entry", entryID, stringField(source, "source_kind", "manual_note"), source["source_project_id"],
-			stringField(source, "source_id", fmt.Sprint(candidate["id"])), mustJSONObject(source["source_locator"]),
-			stringField(source, "source_summary", stringValue(candidate["summary"], "")), source["observed_at"], source["verified_at"],
+			targetKind, targetID, stringField(source, "source_kind", "manual_note"), source["source_project_id"],
+			stringField(source, "source_id", fallbackSourceID), mustJSONObject(source["source_locator"]),
+			stringField(source, "source_summary", fallbackSummary), source["observed_at"], source["verified_at"],
 			stringField(source, "verification_status", "unverified"), actor)
 		if err != nil {
 			return nil, err
