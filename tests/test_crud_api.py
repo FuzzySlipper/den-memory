@@ -100,7 +100,7 @@ def test_upgrade_from_original_external_content_fts_schema(tmp_path):
         conn.close()
 
     with TestClient(create_app(Settings(database_path=db_path))) as c:
-        assert c.get("/api/version").json()["migrations"] == ["001_v0_schema", "002_candidate_fts"]
+        assert c.get("/api/version").json()["migrations"] == ["001_v0_schema", "002_candidate_fts", "003_recall_packet_json"]
         created = c.post("/api/memory-entries", json={
             "slug": "upgrade-entry", "title": "Upgrade Entry", "kind": "fact", "body_md": "upgrade fts works", "created_by": "test"
         })

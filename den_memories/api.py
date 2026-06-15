@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from .scoring import EXCLUDED_ENTRY_STATUSES, RecallContext, score_item, scoring_defaults_readback
+
 router = APIRouter(prefix="/api")
 
 JSON_FIELDS = {
@@ -711,6 +713,183 @@ def curation_link_edge(request: Request, payload: dict[str, Any]) -> dict[str, A
 def curation_unlink_edge(request: Request, edge_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     actor, reason = require_actor_reason(payload)
     return delete_edge(request, edge_id, actor_identity=actor, reason=reason)
+
+
+
+def entry_source_statuses(conn: sqlite3.Connection, entry_id: int) -> list[str]:
+    return [row["verification_status"] for row in conn.execute("SELECT verification_status FROM source_refs WHERE target_kind='memory_entry' AND target_id=?", (entry_id,))]
+
+
+def entry_provenance(conn: sqlite3.Connection, entry_id: int) -> list[dict[str, Any]]:
+    return rows(conn.execute("SELECT * FROM source_refs WHERE target_kind='memory_entry' AND target_id=? ORDER BY id", (entry_id,)))
+
+
+def markdown_for_packet(packet: dict[str, Any]) -> str:
+    lines = [f"# Recall packet {packet['packet_id']}", ""]
+    lines.append("## Included")
+    for item in packet["included_nodes"]:
+        lines.append(f"- **{item['title']}** (`{item['slug']}`) score={item.get('score')} interpretation={item.get('interpretation')}")
+        if item.get("summary"):
+            lines.append(f"  - {item['summary']}")
+    if not packet["included_nodes"]:
+        lines.append("- none")
+    lines.append("")
+    lines.append("## Skipped")
+    for item in packet["skipped"]:
+        lines.append(f"- `{item['node_slug']}`: {item['reason']}")
+    if not packet["skipped"]:
+        lines.append("- none")
+    return "\n".join(lines)
+
+
+def authority_scope_string(item: dict[str, Any]) -> str:
+    scope_id = item.get("authority_scope_id")
+    return f"{item.get('authority_scope_kind', 'global')}:{scope_id}" if scope_id else str(item.get("authority_scope_kind", "global"))
+
+
+def source_ref_for_contract(source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_kind": source.get("source_kind", "manual_note"),
+        "source_project_id": source.get("source_project_id"),
+        "source_id": str(source.get("source_id", "unknown")),
+        "source_locator": source.get("source_locator", {}),
+        "source_summary": source.get("source_summary", ""),
+        "observed_at": source.get("observed_at"),
+        "verified_at": source.get("verified_at"),
+        "verification_status": source.get("verification_status", "unverified"),
+    }
+
+
+def match_kind(label: str) -> str:
+    if label == "authoritative":
+        return "authoritative"
+    if label == "discovered_evidence":
+        return "discoverable"
+    return "fts_only"
+
+
+def find_root_entries(conn: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    return rows(conn.execute("""
+        SELECT e.* FROM memory_entries_fts f
+        JOIN memory_entries e ON e.id=f.rowid
+        WHERE memory_entries_fts MATCH ?
+        LIMIT ?
+    """, (query, limit)))
+
+
+def find_root_nodes(conn: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+    return rows(conn.execute("""
+        SELECT n.* FROM topic_nodes_fts f
+        JOIN topic_nodes n ON n.id=f.rowid
+        WHERE topic_nodes_fts MATCH ?
+        LIMIT ?
+    """, (query, limit)))
+
+
+def load_view(conn: sqlite3.Connection, slug: str | None) -> dict[str, Any] | None:
+    if not slug:
+        return None
+    return decode_row(require(conn.execute("SELECT * FROM topic_views WHERE slug=?", (slug,)).fetchone(), "topic_view"))
+
+
+def traverse_topic_edges(conn: sqlite3.Connection, roots: list[dict[str, Any]], view: dict[str, Any] | None, request_policy: dict[str, Any]) -> list[dict[str, Any]]:
+    include_relations = set(request_policy.get("include_relations") or (view or {}).get("include_relations") or [])
+    exclude_relations = set(request_policy.get("exclude_relations") or (view or {}).get("exclude_relations") or [])
+    max_depth = int(request_policy.get("max_depth", (view or {}).get("max_depth", 1)))
+    if max_depth <= 0:
+        return []
+    visited = {root["id"] for root in roots}
+    frontier = [(root["id"], 0, None) for root in roots]
+    found: list[dict[str, Any]] = []
+    while frontier:
+        node_id, depth, incoming = frontier.pop(0)
+        if depth >= max_depth:
+            continue
+        for row in conn.execute("SELECT e.*, n.* FROM topic_edges e JOIN topic_nodes n ON n.id=e.to_node_id WHERE e.from_node_id=? AND e.status='active' ORDER BY e.priority DESC, e.id", (node_id,)):
+            data = dict(row)
+            relation = data["relation"]
+            to_id = data["to_node_id"]
+            if include_relations and relation not in include_relations:
+                continue
+            if relation in exclude_relations:
+                continue
+            if to_id in visited:
+                continue
+            visited.add(to_id)
+            node = decode_row(conn.execute("SELECT * FROM topic_nodes WHERE id=?", (to_id,)).fetchone())
+            node["edge_relation"] = relation
+            node["edge_depth"] = depth + 1
+            found.append(node)
+            frontier.append((to_id, depth + 1, relation))
+    return found
+
+
+@router.post("/recall")
+def recall(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    conn = db(request)
+    query = payload["query"]
+    limit = int(payload.get("limit", 10))
+    context = RecallContext(scope_kind=payload.get("scope_kind", "global"), scope_id=payload.get("scope_id"))
+    view = load_view(conn, payload.get("topic_view_slug"))
+    root_entries = find_root_entries(conn, query, limit)
+    root_nodes = find_root_nodes(conn, query, limit)
+    if view and not any(node["id"] == view["root_node_id"] for node in root_nodes):
+        root = decode_row(conn.execute("SELECT * FROM topic_nodes WHERE id=?", (view["root_node_id"],)).fetchone())
+        if root:
+            root_nodes.insert(0, root)
+    edge_nodes = traverse_topic_edges(conn, root_nodes, view, payload)
+    included_nodes: list[dict[str, Any]] = []
+    included_edges: list[dict[str, Any]] = []
+    root_matches: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    provenance: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for entry in root_entries:
+        if entry.get("status") in EXCLUDED_ENTRY_STATUSES:
+            skipped.append({"node_slug": entry["slug"], "reason": f"status:{entry['status']}"})
+            continue
+        entry_sources = entry_provenance(conn, entry["id"])
+        score = score_item(entry, context, [source.get("verification_status", "unverified") for source in entry_sources])
+        if score["authority_label"] == "out_of_scope":
+            skipped.append({"node_slug": entry["slug"], "reason": "out_of_scope"})
+            continue
+        if score["authority_label"] == "discovered_evidence":
+            warnings.append(f"{entry['slug']} is discovered cross-scope evidence, not authority for this scope")
+        provenance.extend(source_ref_for_contract(source) for source in entry_sources)
+        root_matches.append({"node_slug": entry["slug"], "match_kind": match_kind(score["authority_label"]), "score": score["score"], "why": f"FTS entry match; {score['authority_label']}"})
+        included_nodes.append({"kind": "memory_entry", "id": entry["id"], "slug": entry["slug"], "title": entry["title"], "summary": entry.get("summary", ""), "score": score["score"], "authority_scope": authority_scope_string(entry), "discovery_scope": entry.get("discovery_scope"), "claim_strength": entry.get("claim_strength"), "interpretation": score["authority_label"], "scope_kind": entry.get("scope_kind"), "scope_id": entry.get("scope_id"), "authority_scope_kind": entry.get("authority_scope_kind"), "authority_scope_id": entry.get("authority_scope_id")})
+    for node in root_nodes + edge_nodes:
+        item = {**node, "status": node.get("status", "active"), "confidence": "source_backed"}
+        score = score_item(item, context, [], edge_depth=int(node.get("edge_depth", 0)), relation=node.get("edge_relation"))
+        if score["authority_label"] == "out_of_scope":
+            skipped.append({"node_slug": node["slug"], "reason": "out_of_scope"})
+            continue
+        if not node.get("edge_relation"):
+            root_matches.append({"node_slug": node["slug"], "match_kind": match_kind(score["authority_label"]), "score": score["score"], "why": f"FTS/topic-view root; {score['authority_label']}"})
+        else:
+            included_edges.append({"from_view": payload.get("topic_view_slug"), "to_node_slug": node["slug"], "relation": node.get("edge_relation"), "depth": node.get("edge_depth", 0)})
+        included_nodes.append({"kind": "topic_node", "id": node["id"], "slug": node["slug"], "title": node["title"], "summary": node.get("summary", ""), "score": score["score"], "authority_scope": authority_scope_string(node), "discovery_scope": node.get("discovery_scope"), "claim_strength": node.get("claim_strength"), "interpretation": score["authority_label"], "edge_relation": node.get("edge_relation"), "edge_depth": node.get("edge_depth", 0), "scope_kind": node.get("scope_kind"), "scope_id": node.get("scope_id"), "authority_scope_kind": node.get("authority_scope_kind"), "authority_scope_id": node.get("authority_scope_id")})
+    included_nodes.sort(key=lambda item: item["score"], reverse=True)
+    packet_id = payload.get("packet_id") or f"recall-{conn.execute('SELECT COUNT(*) FROM recall_logs').fetchone()[0] + 1}"
+    log_id = execute_insert(conn, "INSERT INTO recall_logs(packet_id,request_json,root_node_ids_json,included_node_ids_json,skipped_json,warnings_json,scoring_profile,token_budget,estimated_tokens,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)", (
+        packet_id, j(payload, {}), j([node["id"] for node in root_nodes]), j([item["id"] for item in included_nodes if item.get("kind") == "topic_node"]), j(skipped), j(warnings), scoring_defaults_readback()["profile"], payload.get("token_budget"), 0, payload.get("actor_identity"),
+    ))
+    packet = {"packet_id": packet_id, "packet_md": "", "root_matches": root_matches, "included_nodes": included_nodes[:limit], "included_edges": included_edges, "skipped": skipped, "warnings": warnings, "provenance": provenance, "audit": {"recall_log_id": log_id, "scoring_profile": scoring_defaults_readback()["profile"], "scoring_defaults_ref": "contracts/v0/scoring-defaults.json"}}
+    packet["packet_md"] = markdown_for_packet(packet)
+    conn.execute("UPDATE recall_logs SET estimated_tokens=?, packet_json=? WHERE id=?", (len(packet["packet_md"].split()), j(packet, {}), log_id))
+    conn.commit()
+    return packet
+
+
+@router.get("/recall-logs/by-packet/{packet_id}")
+def get_recall_log_by_packet(request: Request, packet_id: str) -> dict[str, Any]:
+    row = require(db(request).execute("SELECT packet_json FROM recall_logs WHERE packet_id=?", (packet_id,)).fetchone(), "recall_log")
+    return json.loads(row["packet_json"])
+
+
+@router.get("/scoring-defaults/readback")
+def scoring_readback() -> dict[str, Any]:
+    return scoring_defaults_readback()
 
 
 @router.post("/source-refs")

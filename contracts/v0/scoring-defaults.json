@@ -65,5 +65,16 @@
     "owned_by_project": 6.0,
     "contextual_assessment": 7.0
   },
-  "readback_required": true
+  "readback_required": true,
+  "entry_status_modifier": {
+    "active": 20.0,
+    "draft": 0.0,
+    "disputed": -15.0,
+    "superseded": -1000.0,
+    "deprecated": -250.0,
+    "archived": -1000.0
+  },
+  "traversal": {
+    "edge_traversal_decay": 0.65
+  }
 }

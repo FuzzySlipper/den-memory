@@ -13,10 +13,10 @@ def test_migrations_create_required_v0_tables_and_are_idempotent(tmp_path):
     try:
         first = apply_migrations(conn)
         second = apply_migrations(conn)
-        assert first == ["001_v0_schema", "002_candidate_fts"]
+        assert first == ["001_v0_schema", "002_candidate_fts", "003_recall_packet_json"]
         assert second == []
         assert REQUIRED_V0_TABLES <= table_names(conn)
-        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 3
     finally:
         conn.close()
 
