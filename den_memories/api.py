@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
+from .auditor import AUDITOR_CONSTRAINTS
 from .scoring import EXCLUDED_ENTRY_STATUSES, RecallContext, score_item, scoring_defaults_readback
 
 router = APIRouter(prefix="/api")
@@ -1129,7 +1130,7 @@ def doctor_report_post(request: Request) -> dict[str, Any]:
 def audit_snapshot(conn: sqlite3.Connection, since: str | None = None, until: str | None = None, limit: int = 500) -> dict[str, Any]:
     clauses, params = time_filter_clause(since, until)
     return {
-        "metadata": {"format": "den-memories-v0-audit-export", "recall_used": False, "since": since, "until": until},
+        "metadata": {"format": "den-memories-v0-audit-export", "recall_used": False, "since": since, "until": until, "auditor_constraints": dict(AUDITOR_CONSTRAINTS)},
         "counts": observability_summary_for_conn(conn)["counts"],
         "capture_events": select_rows(conn, "capture_events", clauses, params, limit=limit),
         "memory_candidates": select_rows(conn, "memory_candidates", clauses, params, limit=limit),
