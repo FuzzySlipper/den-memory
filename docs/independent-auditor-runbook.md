@@ -99,19 +99,19 @@ Flag possible contamination if the export says recall was used, if auditor const
 From the repo root:
 
 ```bash
-python3 scripts/smoke-memory-free-audit.py --export-file /path/to/audit-export.jsonl --markdown-out /tmp/den-memory-audit-report.md
+go run ./cmd/den-memory-audit --export-file /path/to/audit-export.jsonl --markdown-out /tmp/den-memory-audit-report.md
 ```
 
 Against a running local service:
 
 ```bash
-python3 scripts/smoke-memory-free-audit.py --service-url http://127.0.0.1:8000 --markdown-out /tmp/den-memory-audit-report.md
+go run ./cmd/den-memory-audit --service-url http://127.0.0.1:8000 --markdown-out /tmp/den-memory-audit-report.md
 ```
 
 With runtime readbacks:
 
 ```bash
-python3 scripts/smoke-memory-free-audit.py \
+go run ./cmd/den-memory-audit \
   --service-url http://127.0.0.1:8000 \
   --profile /tmp/auditor-profile-readback.json \
   --tool-list /tmp/auditor-tool-list.json \
@@ -180,7 +180,7 @@ Result: `pass|fail`
   - `validate_auditor_profile(...)`
   - `audit_export_jsonl(...)`
   - `report_markdown(...)`
-- `scripts/smoke-memory-free-audit.py`
+- `cmd/den-memory-audit`
 - `tests/test_independent_auditor.py`
 
 ## Handoff to #2477
@@ -189,5 +189,5 @@ Result: `pass|fail`
 
 1. seed the corpus;
 2. generate `/api/audit/export?format=jsonl`;
-3. run `scripts/smoke-memory-free-audit.py` in memory-free mode;
+3. run `go run ./cmd/den-memory-audit` in memory-free mode;
 4. attach the report handle and contamination-risk result to the dogfood closeout.

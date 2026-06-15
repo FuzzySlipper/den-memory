@@ -12,7 +12,7 @@ This directory locks the vocabulary, scoring defaults, JSON schemas, and example
 - `contracts/v0/schemas/*.schema.json` — JSON Schema contract artifacts for runtime context, source refs, capture, candidates, recall, and audit export.
 - `examples/v0/*.example.json` — valid example payloads used by tests.
 - `tests/test_contracts.py` — validation/readback tests.
-- `scripts/validate-contracts.py` — stable validation command.
+- `cmd/den-memory-validate` — stable validation command.
 
 ## Canonical vocabulary
 
@@ -59,7 +59,7 @@ Schemas and examples include capture, curation/curated candidate state, recall p
 ## Validation
 
 ```bash
-python3 scripts/validate-contracts.py
+go run ./cmd/den-memory-validate
 ```
 
 Expected: pytest passes all contract/example/enum tests.

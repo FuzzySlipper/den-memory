@@ -336,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     audit_report_md = out_dir / "independent-audit-report.md"
     write_text_from_url(base_url, "/api/audit/export?format=jsonl", export_jsonl)
     audit = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "smoke-memory-free-audit.py"), "--export-file", str(export_jsonl), "--markdown-out", str(audit_report_md)],
+        ["go", "run", "./cmd/den-memory-audit", "--export-file", str(export_jsonl), "--markdown-out", str(audit_report_md)],
         text=True,
         capture_output=True,
         cwd=REPO_ROOT,

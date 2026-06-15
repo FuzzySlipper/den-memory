@@ -6,6 +6,10 @@ Den Memories is a standalone graph-guided long-term memory substrate owned by th
 
 ## Current contents
 
+The canonical service implementation is Go. The existing Python package is a
+pre-deployment prototype/spec kept temporarily for parity while the Go rewrite
+settles.
+
 Task #2467 establishes the v0 contract foundation:
 
 - canonical vocabulary registry;
@@ -19,7 +23,9 @@ See `docs/v0-contract.md`.
 ## Validate
 
 ```bash
-python3 scripts/validate-contracts.py
+go test ./...
+go vet ./...
+go run ./cmd/den-memory-validate
 ```
 
 ## Boundary
@@ -31,7 +37,7 @@ Hermes and pi-crew should integrate through thin adapters over this service/API 
 Run a local development server:
 
 ```bash
-DEN_MEMORIES_DB=/tmp/den-memories.sqlite uvicorn den_memories.app:app --host 127.0.0.1 --port 8765
+go run ./cmd/den-memories -db /tmp/den-memories.sqlite -addr 127.0.0.1:8765
 ```
 
 Smoke endpoints:
