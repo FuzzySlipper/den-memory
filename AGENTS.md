@@ -19,12 +19,10 @@ future clients should integrate through thin adapters over the service API.
 
 The canonical service implementation is Go.
 
-- Do not add new Python runtime service code.
-- The existing Python implementation is an executable prototype/spec while the
-  Go implementation is brought up.
-- Python may be touched only for temporary parity tests, one-off migration
-  helpers, or removing the old implementation during the rewrite.
-- New production service features belong in Go.
+- Do not add Python runtime service code.
+- The old executable Python service/prototype has been deleted; do not recreate it.
+- Python in this repository is allowed only for intentionally scoped adapter or smoke tooling that calls the Go service over HTTP.
+- New production service features, tests, migrations, validators, and audit logic belong in Go.
 
 ### 1.2 Contract-first behavior
 
@@ -207,9 +205,8 @@ Tests are the guard rail for the rewrite.
   transaction behavior.
 - Add recall tests for authority scope, discovery scope, claim strength,
   skipped reasons, traversal depth, and ordering.
-- Validate JSON Schema examples as part of the test suite.
-- Keep parity tests from the Python prototype until the Go implementation owns
-  the behavior.
+- Validate JSON Schema examples as part of the Go test/validation path.
+- Keep parity behavior covered by Go tests; do not depend on deleted Python prototype tests.
 
 Useful commands:
 

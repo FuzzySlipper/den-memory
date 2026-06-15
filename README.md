@@ -6,9 +6,7 @@ Den Memories is a standalone graph-guided long-term memory substrate owned by th
 
 ## Current contents
 
-The canonical service implementation is Go. The existing Python package is a
-pre-deployment prototype/spec kept temporarily for parity while the Go rewrite
-settles.
+The canonical service implementation is Go. The old Python service/prototype has been deleted so agents do not patch legacy code by accident. The only Python kept in this repository is adapter/smoke tooling that talks to the Go service over HTTP, currently under `integrations/hermes/` and `scripts/`.
 
 Task #2467 establishes the v0 contract foundation:
 

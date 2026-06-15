@@ -175,13 +175,14 @@ Result: `pass|fail`
 
 ## Implementation hooks in this repo
 
-- `den_memories/auditor.py`
-  - `DEFAULT_AUDITOR_PROFILE`
-  - `validate_auditor_profile(...)`
-  - `audit_export_jsonl(...)`
-  - `report_markdown(...)`
+The old Python auditor/prototype hooks have been removed. The active auditor path is Go-only:
+
+- `internal/audit/report.go`
+  - `DefaultAuditorProfile()`
+  - `ValidateAuditorProfile(...)`
+  - `ReportMarkdown(...)`
 - `cmd/den-memory-audit`
-- `tests/test_independent_auditor.py`
+- `internal/audit/report_test.go`
 
 ## Handoff to #2477
 
