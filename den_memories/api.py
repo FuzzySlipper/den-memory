@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from .scoring import EXCLUDED_ENTRY_STATUSES, RecallContext, score_item, scoring_defaults_readback
 
@@ -23,6 +23,7 @@ JSON_FIELDS = {
     "included_node_ids_json",
     "skipped_json",
     "warnings_json",
+    "packet_json",
     "include_relations_json",
     "exclude_relations_json",
     "default_unroll_policy_json",
@@ -955,9 +956,241 @@ def get_curation_event(request: Request, event_id: int) -> dict[str, Any]:
     return get_event_row(request, "curation_events", event_id, "curation_event")
 
 
+
+
+# Observability, doctor, and audit export surfaces. These are read-only and are safe for
+# independent auditors because they expose pipeline artifacts directly without invoking recall.
+
+def count_one(conn: sqlite3.Connection, sql: str, params: tuple[Any, ...] = ()) -> int:
+    return int(conn.execute(sql, params).fetchone()[0])
+
+
+def time_filter_clause(since: str | None = None, until: str | None = None, column: str = "created_at") -> tuple[list[str], list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since:
+        clauses.append(f"{column} >= ?")
+        params.append(since)
+    if until:
+        clauses.append(f"{column} <= ?")
+        params.append(until)
+    return clauses, params
+
+
+def select_rows(conn: sqlite3.Connection, table: str, clauses: list[str], params: list[Any], *, order: str = "id DESC", limit: int = 50) -> list[dict[str, Any]]:
+    sql = f"SELECT * FROM {table}"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += f" ORDER BY {order} LIMIT ?"
+    return rows(conn.execute(sql, (*params, limit)))
+
+
+@router.get("/observability/summary")
+def observability_summary(request: Request) -> dict[str, Any]:
+    conn = db(request)
+    return {
+        "counts": {
+            "capture_events": count_one(conn, "SELECT COUNT(*) FROM capture_events"),
+            "captured_events": count_one(conn, "SELECT COUNT(*) FROM capture_events WHERE decision='captured'"),
+            "filtered_events": count_one(conn, "SELECT COUNT(*) FROM capture_events WHERE decision='filtered'"),
+            "errored_events": count_one(conn, "SELECT COUNT(*) FROM capture_events WHERE decision='errored'"),
+            "pending_candidates": count_one(conn, "SELECT COUNT(*) FROM memory_candidates WHERE status='pending'"),
+            "curation_events": count_one(conn, "SELECT COUNT(*) FROM curation_events"),
+            "recall_logs": count_one(conn, "SELECT COUNT(*) FROM recall_logs"),
+            "broken_source_refs": count_one(conn, "SELECT COUNT(*) FROM source_refs WHERE verification_status='broken'"),
+            "unverified_source_refs": count_one(conn, "SELECT COUNT(*) FROM source_refs WHERE verification_status='unverified'"),
+        },
+        "recent_ids": {
+            "capture_event_ids": [row["id"] for row in conn.execute("SELECT id FROM capture_events ORDER BY id DESC LIMIT 10")],
+            "pending_candidate_ids": [row["id"] for row in conn.execute("SELECT id FROM memory_candidates WHERE status='pending' ORDER BY id DESC LIMIT 10")],
+            "curation_event_ids": [row["id"] for row in conn.execute("SELECT id FROM curation_events ORDER BY id DESC LIMIT 10")],
+            "recall_log_ids": [row["id"] for row in conn.execute("SELECT id FROM recall_logs ORDER BY id DESC LIMIT 10")],
+        },
+    }
+
+
+@router.get("/observability/pending-candidates")
+def observability_pending_candidates(request: Request, scope_kind: str | None = None, scope_id: str | None = None, source_kind: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    clauses = ["status='pending'"]
+    params: list[Any] = []
+    join = ""
+    if scope_kind:
+        clauses.append("scope_kind=?")
+        params.append(scope_kind)
+    if scope_id:
+        clauses.append("scope_id=?")
+        params.append(scope_id)
+    if source_kind:
+        join = " JOIN json_each(memory_candidates.source_refs_json) source_ref"
+        clauses.append("json_extract(source_ref.value, '$.source_kind')=?")
+        params.append(source_kind)
+    sql = "SELECT DISTINCT memory_candidates.* FROM memory_candidates" + join + " WHERE " + " AND ".join(clauses) + " ORDER BY memory_candidates.id DESC LIMIT ?"
+    items = rows(db(request).execute(sql, (*params, limit)))
+    return {"count": len(items), "items": items}
+
+
+@router.get("/observability/curation-timeline")
+def observability_curation_timeline(request: Request, actor_identity: str | None = None, action: str | None = None, since: str | None = None, until: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    clauses, params = time_filter_clause(since, until)
+    if actor_identity:
+        clauses.append("actor_identity=?")
+        params.append(actor_identity)
+    if action:
+        clauses.append("action=?")
+        params.append(action)
+    items = select_rows(db(request), "curation_events", clauses, params, limit=limit)
+    return {"count": len(items), "items": items}
+
+
+@router.get("/observability/recall-logs")
+def observability_recall_logs(request: Request, packet_id: str | None = None, actor: str | None = None, project_id: str | None = None, since: str | None = None, until: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    clauses, params = time_filter_clause(since, until)
+    if packet_id:
+        clauses.append("packet_id=?")
+        params.append(packet_id)
+    if actor:
+        clauses.append("created_by=?")
+        params.append(actor)
+    if project_id:
+        clauses.append("(json_extract(request_json, '$.scope_id')=? OR json_extract(request_json, '$.project_id')=?)")
+        params.extend([project_id, project_id])
+    items = select_rows(db(request), "recall_logs", clauses, params, limit=limit)
+    return {"count": len(items), "items": items}
+
+
+def issue(kind: str, severity: str, summary: str, ids: list[int], details: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {"kind": kind, "severity": severity, "summary": summary, "count": len(ids), "ids": ids, "details": details or {}}
+
+
+def doctor_issues(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    missing_ref_candidate_ids = [row["id"] for row in conn.execute("SELECT id FROM memory_candidates WHERE source_refs_json='[]'")]
+    missing_ref_entry_ids = [row["id"] for row in conn.execute("SELECT e.id FROM memory_entries e LEFT JOIN source_refs s ON s.target_kind='memory_entry' AND s.target_id=e.id WHERE s.id IS NULL")]
+    if missing_ref_candidate_ids or missing_ref_entry_ids:
+        issues.append(issue("missing_source_refs", "warning", "Candidates or entries without source refs", missing_ref_candidate_ids + missing_ref_entry_ids, {"candidate_ids": missing_ref_candidate_ids, "memory_entry_ids": missing_ref_entry_ids}))
+    broken_ids = [row["id"] for row in conn.execute("SELECT id FROM source_refs WHERE verification_status IN ('broken','unverified')")]
+    if broken_ids:
+        issues.append(issue("broken_or_unverified_source_refs", "warning", "Source refs are broken or unverified", broken_ids))
+    unscoped = [row["id"] for row in conn.execute("SELECT id FROM memory_candidates WHERE scope_kind='global' AND scope_id IS NULL AND authority_scope_kind='global' AND authority_scope_id IS NULL")]
+    if unscoped:
+        issues.append(issue("unscoped_candidates", "warning", "Candidates remain globally scoped without explicit review", unscoped))
+    broad = [row["id"] for row in conn.execute("""
+        SELECT e.id FROM memory_entries e
+        JOIN source_refs s ON s.target_kind='memory_entry' AND s.target_id=e.id
+        WHERE e.authority_scope_kind='global' AND s.source_project_id IS NOT NULL
+        GROUP BY e.id HAVING COUNT(s.id)=1
+    """)]
+    if broad:
+        issues.append(issue("broad_authority_from_narrow_source", "warning", "Global authority memory backed by a single project-scoped source", broad))
+    duplicate_candidate_ids = [row["id"] for row in conn.execute("""
+        SELECT c.id FROM memory_candidates c
+        JOIN (SELECT lower(trim(body_md)) body_key FROM memory_candidates WHERE length(trim(body_md)) > 0 GROUP BY lower(trim(body_md)) HAVING COUNT(*) > 1) d
+          ON lower(trim(c.body_md)) = d.body_key
+    """)]
+    if duplicate_candidate_ids:
+        issues.append(issue("duplicate_candidate_bodies", "info", "Multiple candidates share the same normalized body", duplicate_candidate_ids))
+    secret_ids: list[str] = []
+    marker_sql = " OR ".join(["lower(title || ' ' || summary || ' ' || body_md) LIKE ?" for _ in SECRET_MARKERS])
+    marker_params = tuple(f"%{marker.lower()}%" for marker in SECRET_MARKERS)
+    for row in conn.execute(f"SELECT 'candidate:' || id AS ref FROM memory_candidates WHERE {marker_sql}", marker_params):
+        secret_ids.append(row["ref"])
+    for row in conn.execute(f"SELECT 'entry:' || id AS ref FROM memory_entries WHERE {marker_sql}", marker_params):
+        secret_ids.append(row["ref"])
+    if secret_ids:
+        issues.append({"kind": "secret_like_strings", "severity": "critical", "summary": "Secret/token-like strings found in memory text", "count": len(secret_ids), "ids": secret_ids, "details": {"markers_checked": list(SECRET_MARKERS)}})
+    return issues
+
+
+@router.get("/doctor/report")
+def doctor_report(request: Request) -> dict[str, Any]:
+    conn = db(request)
+    issues = doctor_issues(conn)
+    return {
+        "doctor_version": "v0-stub",
+        "read_only": True,
+        "counts": {
+            "issues": len(issues),
+            "memory_entries": count_one(conn, "SELECT COUNT(*) FROM memory_entries"),
+            "memory_candidates": count_one(conn, "SELECT COUNT(*) FROM memory_candidates"),
+            "source_refs": count_one(conn, "SELECT COUNT(*) FROM source_refs"),
+            "capture_events": count_one(conn, "SELECT COUNT(*) FROM capture_events"),
+            "curation_events": count_one(conn, "SELECT COUNT(*) FROM curation_events"),
+            "recall_logs": count_one(conn, "SELECT COUNT(*) FROM recall_logs"),
+        },
+        "issues": issues,
+    }
+
+
+@router.post("/doctor/report")
+def doctor_report_post(request: Request) -> dict[str, Any]:
+    return doctor_report(request)
+
+
+def audit_snapshot(conn: sqlite3.Connection, since: str | None = None, until: str | None = None, limit: int = 500) -> dict[str, Any]:
+    clauses, params = time_filter_clause(since, until)
+    return {
+        "metadata": {"format": "den-memories-v0-audit-export", "recall_used": False, "since": since, "until": until},
+        "counts": observability_summary_for_conn(conn)["counts"],
+        "capture_events": select_rows(conn, "capture_events", clauses, params, limit=limit),
+        "memory_candidates": select_rows(conn, "memory_candidates", clauses, params, limit=limit),
+        "memory_entries": select_rows(conn, "memory_entries", clauses, params, limit=limit),
+        "source_refs": select_rows(conn, "source_refs", clauses, params, limit=limit),
+        "curation_events": select_rows(conn, "curation_events", clauses, params, limit=limit),
+        "recall_logs": select_rows(conn, "recall_logs", clauses, params, limit=limit),
+        "doctor": {"read_only": True, "issues": doctor_issues(conn)},
+    }
+
+
+def observability_summary_for_conn(conn: sqlite3.Connection) -> dict[str, Any]:
+    return {
+        "counts": {
+            "capture_events": count_one(conn, "SELECT COUNT(*) FROM capture_events"),
+            "memory_candidates": count_one(conn, "SELECT COUNT(*) FROM memory_candidates"),
+            "memory_entries": count_one(conn, "SELECT COUNT(*) FROM memory_entries"),
+            "source_refs": count_one(conn, "SELECT COUNT(*) FROM source_refs"),
+            "curation_events": count_one(conn, "SELECT COUNT(*) FROM curation_events"),
+            "recall_logs": count_one(conn, "SELECT COUNT(*) FROM recall_logs"),
+        }
+    }
+
+
+def audit_markdown(snapshot: dict[str, Any]) -> str:
+    lines = ["# Den Memories v0 audit export", "", "Recall used: `false`", "", "## Counts"]
+    for key, value in snapshot["counts"].items():
+        lines.append(f"- {key}: {value}")
+    lines.append("")
+    lines.append("## Doctor issues")
+    for item in snapshot["doctor"]["issues"]:
+        lines.append(f"- **{item['kind']}** ({item['severity']}): {item['summary']} ids={item['ids']}")
+    if not snapshot["doctor"]["issues"]:
+        lines.append("- none")
+    lines.append("")
+    lines.append("## Drill-down IDs")
+    for table in ("capture_events", "memory_candidates", "memory_entries", "source_refs", "curation_events", "recall_logs"):
+        lines.append(f"- {table}: {[item.get('id') for item in snapshot[table]]}")
+    return "\n".join(lines) + "\n"
+
+
+@router.get("/audit/export")
+def audit_export(request: Request, format: str = "jsonl", since: str | None = None, until: str | None = None, limit: int = Query(500, ge=1, le=2000)) -> Response:
+    snapshot = audit_snapshot(db(request), since, until, limit)
+    if format == "json":
+        return Response(json.dumps(snapshot, sort_keys=True), media_type="application/json")
+    if format == "markdown":
+        return Response(audit_markdown(snapshot), media_type="text/markdown")
+    if format != "jsonl":
+        raise HTTPException(status_code=400, detail="unsupported_audit_export_format")
+    lines = [json.dumps({"record_type": "metadata", **snapshot["metadata"], "counts": snapshot["counts"]}, sort_keys=True)]
+    for table in ("capture_events", "memory_candidates", "memory_entries", "source_refs", "curation_events", "recall_logs"):
+        for item in snapshot[table]:
+            lines.append(json.dumps({"record_type": table, **item}, sort_keys=True))
+    lines.append(json.dumps({"record_type": "doctor", **snapshot["doctor"]}, sort_keys=True))
+    return Response("\n".join(lines) + "\n", media_type="application/x-ndjson")
+
+
 @router.get("/recall-logs")
-def list_recall_logs(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
-    return list_event_table(request, "recall_logs", limit)
+def list_recall_logs(request: Request, packet_id: str | None = None, actor: str | None = None, project_id: str | None = None, since: str | None = None, until: str | None = None, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
+    return observability_recall_logs(request, packet_id=packet_id, actor=actor, project_id=project_id, since=since, until=until, limit=limit)
 
 
 @router.get("/recall-logs/{event_id}")
