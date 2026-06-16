@@ -1,6 +1,6 @@
 # Den Memories LLM curator proposer
 
-Task: #2525  
+Task: #2525
 Status: implementation note for the first LLM-assisted proposer path.
 
 ## Placement

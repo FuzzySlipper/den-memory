@@ -123,6 +123,22 @@ func TestLLMProposerValidatesPromoteRequiresEntry(t *testing.T) {
 	}
 }
 
+func TestReviewLLMRejectsMismatchedCandidateIDs(t *testing.T) {
+	packet := Packet{QueueState: "needs_proposal", Candidate: map[string]any{"id": 55}}
+	cases := []Proposal{
+		{"proposal_kind": "reject_candidate", "candidate_ids": []any{999}, "reason": "wrong candidate"},
+		{"proposal_kind": "reject_candidate", "candidate_id": 999, "reason": "wrong candidate"},
+		{"proposal_kind": "reject_candidate", "reason": "wrong action candidate", "proposed_action": map[string]any{"action": "reject_candidate", "candidate_id": 999}},
+		{"proposal_kind": "reject_candidate", "candidate_ids": []any{55}, "reason": "mixed action candidates", "proposed_action": map[string]any{"action": "reject_candidate", "candidate_ids": []any{55, 999}}},
+	}
+	for _, proposal := range cases {
+		err := normalizeAndValidateLLMProposal(proposal, packet, LLMConfig{Model: "test-model", ProposerIdentity: "p", ProposerKind: "llm", MaxPacketBytes: 100}, "prompt", "response")
+		if err == nil || !strings.Contains(err.Error(), "bounded packet candidate") {
+			t.Fatalf("expected bounded packet candidate validation error, got %v for %#v", err, proposal)
+		}
+	}
+}
+
 func queueItem(id int) map[string]any {
 	return map[string]any{
 		"queue_state": "needs_proposal",

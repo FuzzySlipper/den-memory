@@ -271,7 +271,10 @@ func normalizeAndValidateLLMProposal(proposal Proposal, packet Packet, cfg LLMCo
 	if candidateID == 0 {
 		return fmt.Errorf("candidate missing id")
 	}
-	if len(anySlice(proposal["candidate_ids"])) == 0 && intFromAny(proposal["candidate_id"]) == 0 {
+	if err := validateProposalCandidateScope(proposal, candidateID); err != nil {
+		return err
+	}
+	if len(anySlice(proposal["candidate_ids"])) == 0 {
 		proposal["candidate_ids"] = []any{candidateID}
 	}
 	if strings.TrimSpace(stringFromAny(proposal["reason"])) == "" {
@@ -313,6 +316,52 @@ func normalizeAndValidateLLMProposal(proposal Proposal, packet Packet, cfg LLMCo
 		proposal["proposed_action"] = defaultLLMProposedAction(kind, candidateID, proposal)
 	}
 	return nil
+}
+
+func validateProposalCandidateScope(proposal Proposal, packetCandidateID int) error {
+	ids := candidateIDsFromProposal(proposal)
+	for _, id := range ids {
+		if id != packetCandidateID {
+			return fmt.Errorf("proposal candidate id %d does not match bounded packet candidate %d", id, packetCandidateID)
+		}
+	}
+	return nil
+}
+
+func candidateIDsFromProposal(proposal Proposal) []int {
+	ids := []int{}
+	if id := intFromAny(proposal["candidate_id"]); id > 0 {
+		ids = append(ids, id)
+	}
+	for _, raw := range anySlice(proposal["candidate_ids"]) {
+		if id := intFromAny(raw); id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	if action, ok := proposal["proposed_action"].(map[string]any); ok {
+		if id := intFromAny(action["candidate_id"]); id > 0 {
+			ids = append(ids, id)
+		}
+		for _, raw := range anySlice(action["candidate_ids"]) {
+			if id := intFromAny(raw); id > 0 {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return uniqueIntsForValidation(ids)
+}
+
+func uniqueIntsForValidation(ids []int) []int {
+	seen := map[int]struct{}{}
+	result := []int{}
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func defaultLLMProposedAction(kind string, candidateID int, proposal Proposal) map[string]any {
