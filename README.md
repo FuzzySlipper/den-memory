@@ -44,3 +44,32 @@ Smoke endpoints:
 curl -fsS http://127.0.0.1:8765/health
 curl -fsS http://127.0.0.1:8765/api/version
 ```
+
+## Deploy to den-srv
+
+Regular Den agents on den-k8 can deploy the service to den-srv with the checked-in deploy helper. The helper validates the Go repo, builds local Linux binaries, stages only the service artifacts, installs them over SSH, and smokes the remote systemd service.
+
+Default mode is non-mutating:
+
+```bash
+scripts/deploy-den-srv.sh
+```
+
+Apply the deploy after the plan looks correct:
+
+```bash
+scripts/deploy-den-srv.sh --yes
+```
+
+Defaults:
+
+- SSH target: `den-srv`
+- systemd unit: `den-memory.service`
+- service user/group: `den-memory`
+- service root: `/data/services/den-memory/`
+- env file: `/data/services/den-memory/env/server.env`
+- data/SQLite path: `/data/services/den-memory/data/den-memories.sqlite`
+- initial bind: `127.0.0.1:8780`
+
+Use `--addr 0.0.0.0:8780 --force-env` only if selected Hermes/pi-crew clients need direct trusted-LAN access. v0 intentionally relies on LAN/service-boundary trust and does not add API auth/RBAC.
+
