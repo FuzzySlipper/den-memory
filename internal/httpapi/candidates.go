@@ -109,21 +109,65 @@ func (h *Handler) capture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, err)
+	if !autoPromoteEligible(payload) {
+		if err := tx.Commit(); err != nil {
+			writeError(w, err)
+			return
+		}
+		row, err := getCandidateRecord(ctx, h.store.DB(), int(id))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"decision":         "captured",
+			"reason":           stringField(payload, "reason", "captured candidate"),
+			"capture_event_id": eventID,
+			"candidate_ids":    []int64{id},
+			"candidate":        row,
+		})
 		return
 	}
-	row, err := getCandidateRecord(ctx, h.store.DB(), int(id))
+
+	// Auto-promote: non-worker/non-auditor agents get an immediate curated entry.
+	entryID, err := insertMemoryEntryFromCandidate(ctx, tx, candidate, payload, stringField(payload, "actor_identity", "auto-promote"))
+	if err != nil {
+		h.captureDecision(w, tx, payload, "errored", err.Error(), nil, -1, -1)
+		return
+	}
+	sourceRefIDs, err := attachCandidateSourceRefs(ctx, tx, candidate, entryID, stringField(payload, "actor_identity", "auto-promote"))
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	afterCandidate, err := updateCandidateFields(ctx, tx, int(id), map[string]any{"status": "promoted", "updated_by": stringField(payload, "actor_identity", "auto-promote")})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	entry, err := store.QueryOne(ctx, tx, `SELECT * FROM memory_entries WHERE id=?`, entryID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	curationAfter := map[string]any{"candidate": afterCandidate, "memory_entry": entry, "source_ref_ids": sourceRefIDs}
+	curationEventID, err := logCuration(ctx, tx, "promote", stringField(payload, "actor_identity", "auto-promote"), stringField(payload, "reason", "auto-promoted from capture"), map[string]any{"candidate_id": id, "memory_entry_id": entryID}, candidate, curationAfter)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"decision":         "captured",
-		"reason":           stringField(payload, "reason", "captured candidate"),
-		"capture_event_id": eventID,
-		"candidate_ids":    []int64{id},
-		"candidate":        row,
+		"decision":          "promoted",
+		"reason":            stringField(payload, "reason", "auto-promoted from capture"),
+		"capture_event_id":  eventID,
+		"curation_event_id": curationEventID,
+		"candidate":         afterCandidate,
+		"memory_entry":      entry,
+		"source_ref_ids":    sourceRefIDs,
 	})
 }
 
@@ -265,6 +309,24 @@ func defaultCaptureMode(runtime string, actorRole string) string {
 		return "metadata_only"
 	}
 	return "permissive_candidates"
+}
+
+// autoPromoteEligible returns true for non-worker/non-auditor agents whose capture
+// payload represents a real agent (not a worker, auditor, or debug-only runtime).
+// Auto-promoted captures create an immediate active curated memory entry.
+func autoPromoteEligible(payload map[string]any) bool {
+	role := strings.ToLower(stringField(payload, "actor_role", ""))
+	runtime := strings.ToLower(stringField(payload, "runtime", ""))
+	if role == "auditor" || runtime == "audit" || runtime == "audit_service" {
+		return false
+	}
+	if role == "worker" || runtime == "worker" || runtime == "subagent" {
+		return false
+	}
+	if stringField(payload, "actor_identity", "") == "" {
+		return false
+	}
+	return true
 }
 
 func joinClauses(clauses []string) string {

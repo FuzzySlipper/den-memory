@@ -64,19 +64,34 @@ func TestCapturePromoteRecallAndAudit(t *testing.T) {
 			"verification_status": "verified",
 		}},
 	})
-	if capture["decision"] != "captured" {
+	if capture["decision"] != "promoted" {
 		t.Fatalf("capture decision = %v", capture["decision"])
 	}
-	candidate := capture["candidate"].(map[string]any)
-	promote := postJSON(t, ts.URL+"/api/curation/candidates/"+idString(candidate["id"])+"/promote", map[string]any{
-		"actor_identity": "curator",
-		"reason":         "verified seed",
-		"slug":           "hermes-prompt-cache-invariant",
-	})
-	entry := promote["memory_entry"].(map[string]any)
-	if entry["slug"] != "hermes-prompt-cache-invariant" {
-		t.Fatalf("promoted slug = %v", entry["slug"])
+	entry := capture["memory_entry"].(map[string]any)
+	if entry["slug"] == "" || entry["status"] != "active" || entry["curation_state"] != "curated" {
+		t.Fatalf("auto-promoted entry state = %#v", entry)
 	}
+
+	// Also verify the classic manual promote path still works via direct candidate.
+	workerCandidate := postJSON(t, ts.URL+"/api/candidates", map[string]any{
+		"title":         "Manual promote test",
+		"summary":       "Manual promote still works",
+		"body_md":       "Manual promote body",
+		"proposed_kind": "fact",
+		"scope_kind":    "project",
+		"scope_id":      "den-memory",
+		"source_refs":   []any{map[string]any{"source_kind": "manual_note", "source_id": "manual", "verification_status": "unverified"}},
+	})
+	manualPromote := postJSON(t, ts.URL+"/api/curation/candidates/"+idString(workerCandidate["id"])+"/promote", map[string]any{
+		"actor_identity": "curator",
+		"reason":         "verified manually",
+		"slug":           "manual-promote-test",
+	})
+	if manualPromote["memory_entry"] == nil {
+		t.Fatalf("manual promote missing entry: %#v", manualPromote)
+	}
+
+	// Recall should find auto-promoted entry by its slug pattern.
 	packet := postJSON(t, ts.URL+"/api/recall", map[string]any{
 		"query":          "Hermes",
 		"scope_kind":     "project",
@@ -89,8 +104,8 @@ func TestCapturePromoteRecallAndAudit(t *testing.T) {
 		t.Fatalf("recall returned no nodes: %#v", packet)
 	}
 	first := nodes[0].(map[string]any)
-	if first["slug"] != "hermes-prompt-cache-invariant" {
-		t.Fatalf("first recall slug = %v", first["slug"])
+	if first["slug"] != entry["slug"] {
+		t.Fatalf("first recall slug = %v, want %v", first["slug"], entry["slug"])
 	}
 	audit := getText(t, ts.URL+"/api/audit/export?format=jsonl")
 	if !bytes.Contains([]byte(audit), []byte(`"record_type":"metadata"`)) {

@@ -11,25 +11,21 @@ import (
 func TestAgentCandidateCuratorProposalApplyAgentRecallWorkflow(t *testing.T) {
 	_, ts := newTestServer(t)
 
-	capture := postJSON(t, ts.URL+"/api/capture", map[string]any{
-		"runtime_context":       runtimeContext("hermes", "candidate-agent", "runner", "den-memory"),
-		"raw_content":           "Go should be the canonical implementation language for Den Memories service and CLI work.",
-		"title":                 "Den Memories Go canonical curation workflow",
-		"summary":               "Den Memories service and CLI work should stay in Go where possible.",
-		"event_kind":            "task_message",
-		"proposed_kind":         "policy_note",
-		"proposed_slug":         "den-memory-go-canonical-curation-workflow",
-		"proposed_scope_kind":   "project",
-		"proposed_scope_id":     "den-memory",
-		"discovery_scope":       "same_project",
-		"claim_strength":        "recommendation",
-		"extraction_confidence": 0.91,
-		"source_refs":           []any{sourceRef("den_task", "2521", "Patch language constraint and curation workflow task")},
+	// Use direct candidate creation (not capture) to test proposal→apply path.
+	candidate := postJSON(t, ts.URL+"/api/candidates", map[string]any{
+		"title":                "Den Memories Go canonical curation workflow",
+		"summary":              "Den Memories service and CLI work should stay in Go where possible.",
+		"body_md":              "Go should be the canonical implementation language for Den Memories service and CLI work.",
+		"proposed_kind":        "policy_note",
+		"proposed_slug":        "den-memory-go-canonical-curation-workflow",
+		"scope_kind":           "project",
+		"scope_id":             "den-memory",
+		"authority_scope_kind": "project",
+		"authority_scope_id":   "den-memory",
+		"discovery_scope":      "same_project",
+		"claim_strength":       "recommendation",
+		"source_refs":          []any{sourceRef("den_task", "2521", "Patch language constraint and curation workflow task")},
 	})
-	if capture["decision"] != "captured" {
-		t.Fatalf("capture decision = %#v", capture)
-	}
-	candidate := capture["candidate"].(map[string]any)
 	if candidate["status"] != "pending" {
 		t.Fatalf("candidate status = %#v", candidate)
 	}

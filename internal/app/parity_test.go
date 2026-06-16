@@ -53,12 +53,12 @@ func TestCaptureDecisionsAllLogEventsAndRuntimeContextContractShape(t *testing.T
 		"proposed_scope_id":   "den-memory",
 		"source_refs":         []any{sourceRef("den_message", "14951", "Planner handoff message")},
 	})
-	if captured["decision"] != "captured" {
+	if captured["decision"] != "promoted" {
 		t.Fatalf("captured decision = %#v", captured)
 	}
-	candidate := captured["candidate"].(map[string]any)
-	if candidate["scope_kind"] != "project" || candidate["scope_id"] != "den-memory" || candidate["created_by"] != "capture-runner" {
-		t.Fatalf("runtime_context/proposed_scope not mapped onto candidate: %#v", candidate)
+	entry := captured["memory_entry"].(map[string]any)
+	if entry["scope_kind"] != "project" || entry["scope_id"] != "den-memory" || entry["created_by"] != "capture-runner" {
+		t.Fatalf("auto-promoted entry scope/author = %#v", entry)
 	}
 
 	ignored := postJSON(t, ts.URL+"/api/capture", map[string]any{
@@ -99,19 +99,15 @@ func TestCaptureDecisionsAllLogEventsAndRuntimeContextContractShape(t *testing.T
 
 func TestCandidatePromotionPreservesSourceRefs(t *testing.T) {
 	_, ts := newTestServer(t)
-	capture := postJSON(t, ts.URL+"/api/capture", map[string]any{
-		"runtime":              "hermes",
-		"actor_identity":       "capture-agent",
-		"raw_text":             "Promotion must preserve source refs on the curated entry.",
-		"title":                "Promoted candidate source refs",
-		"summary":              "Promoted source refs",
-		"scope_kind":           "project",
-		"scope_id":             "den-memory",
-		"authority_scope_kind": "project",
-		"authority_scope_id":   "den-memory",
-		"source_refs":          []any{sourceRef("den_task", "2471", "Candidate source ref")},
+	candidate := postJSON(t, ts.URL+"/api/candidates", map[string]any{
+		"title":         "Promotion must preserve source refs on the curated entry.",
+		"summary":       "Promoted source refs",
+		"body_md":       "Promotion must preserve source refs on the curated entry.",
+		"proposed_kind": "fact",
+		"scope_kind":    "project",
+		"scope_id":      "den-memory",
+		"source_refs":   []any{sourceRef("den_task", "2471", "Candidate source ref")},
 	})
-	candidate := capture["candidate"].(map[string]any)
 	promote := postJSON(t, ts.URL+"/api/curation/candidates/"+idString(candidate["id"])+"/promote", map[string]any{
 		"actor_identity": "curator",
 		"reason":         "source-backed",
