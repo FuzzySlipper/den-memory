@@ -66,7 +66,33 @@ go run ./cmd/den-memory-curator \
   --reason "reviewed source refs"
 ```
 
-The CLI is deliberately proposal-only; it never calls proposal apply endpoints. Future LLM-backed proposer workers should implement the same Go `curator.Proposer` seam and still store proposals for explicit operator apply.
+The CLI is deliberately proposal-only; it never calls proposal apply endpoints. It supports two producer modes:
+
+- `--mode deterministic` — local rule-based proposal creation for tests and operator workflows.
+- `--mode llm` — OpenAI-compatible chat-completions proposer that reads bounded curation packets and emits strict proposal JSON.
+
+LLM mode keeps model calls outside the Go service while the service owns proposal persistence and apply semantics:
+
+```bash
+DEN_MEMORY_CURATOR_LLM_BASE_URL=http://127.0.0.1:11434 \
+DEN_MEMORY_CURATOR_LLM_MODEL=curator-model \
+go run ./cmd/den-memory-curator \
+  --base-url http://127.0.0.1:8765 \
+  --mode llm \
+  --candidate-ids 12 \
+  --proposer-identity den-memory-llm-curator \
+  --dry-run
+```
+
+Configuration flags/env:
+
+- `--llm-base-url` / `DEN_MEMORY_CURATOR_LLM_BASE_URL` / `OPENAI_BASE_URL`
+- `--llm-api-key` / `DEN_MEMORY_CURATOR_LLM_API_KEY` / `OPENAI_API_KEY` (optional for local gateways)
+- `--llm-model` / `DEN_MEMORY_CURATOR_LLM_MODEL`
+- `--llm-temperature` (default `0`)
+- `--llm-max-packet-bytes` (default `12000`)
+
+LLM output is validated before storage. Malformed output stores no proposal. Stored proposals include bounded audit metadata (`mode`, provider, model, prompt hash, response hash). Non-memory routing proposal kinds such as `knowledge_candidate` and `doc_update_candidate` are represented for future Knowledge Library / Den doc workflows, but they are still proposals only. See `docs/llm-curator-proposer.md` for the placement, provider surface, and audit contract.
 
 ## Deploy to den-srv
 
