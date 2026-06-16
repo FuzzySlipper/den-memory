@@ -1,0 +1,112 @@
+{
+  "tool_definitions_version": "v0",
+  "description": "Canonical tool definitions for Den Memories runtime adapters (Hermes, pi-crew, etc.). Each adapter imports or generates tools from this file. The tool set available to a profile is determined by its tool_set config (agent or worker).",
+  "tool_sets": {
+    "agent": {
+      "description": "Tools for non-worker agents. den_memory_store auto-promotes to curated memory. den_memory_propose is available for explicit candidate staging but agents should prefer den_memory_store.",
+      "tools": ["den_memory_recall", "den_memory_read", "den_memory_search", "den_memory_store", "den_memory_propose", "den_memory_doctor"]
+    },
+    "worker": {
+      "description": "Tools for worker/subagent runtimes. Workers are metadata-only on capture, so they use den_memory_propose to create pending candidates. den_memory_store is excluded (it would be a no-op).",
+      "tools": ["den_memory_recall", "den_memory_read", "den_memory_search", "den_memory_propose", "den_memory_doctor"]
+    }
+  },
+  "tools": [
+    {
+      "name": "den_memory_recall",
+      "description": "Read-only guided recall packet from Den Memories. Returns active curated memory entries ranked by relevance within the request scope. Auto-promoted captures are included. Profile/agent-scoped memories are discoverable within their scope.",
+      "behavior": "read_only",
+      "audience": ["agent", "worker"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Search query for guided recall"},
+          "budget_tokens": {"type": "integer", "minimum": 1, "description": "Maximum tokens for recall context"},
+          "scope_kind": {"type": "string", "description": "Scope kind to filter by (project, profile, agent_instance, etc.)"},
+          "scope_id": {"type": "string", "description": "Scope ID to filter by"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Maximum results"}
+        },
+        "required": ["query", "budget_tokens"]
+      }
+    },
+    {
+      "name": "den_memory_read",
+      "description": "Read a single curated memory entry by its slug. Returns the full entry including body, metadata, scope, and source refs.",
+      "behavior": "read_only",
+      "audience": ["agent", "worker"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slug": {"type": "string", "description": "Slug of the memory entry to read"}
+        },
+        "required": ["slug"]
+      }
+    },
+    {
+      "name": "den_memory_search",
+      "description": "Full-text search across curated memory entries, optionally including pending candidates. Returns matching entries with title, summary, and scope.",
+      "behavior": "read_only",
+      "audience": ["agent", "worker"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Search query"},
+          "include_candidates": {"type": "boolean", "description": "Include pending candidates in results"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Maximum results"}
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "den_memory_store",
+      "description": "Store a memory. For non-worker agents: content is auto-promoted to an active curated memory entry immediately recall-visible within its scope. Profile/agent-scoped stores are particularly low-risk — store experimentation freely. Workers: use den_memory_propose instead (capture is metadata-only for workers).",
+      "behavior": "auto_promote",
+      "audience": ["agent"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "raw_text": {"type": "string", "description": "Raw text content to capture as a memory"},
+          "title": {"type": "string", "description": "Title for the memory"},
+          "summary": {"type": "string", "description": "Short summary"},
+          "scope_kind": {"type": "string", "description": "Scope kind (project, profile, agent_instance, etc.). Profile/agent scopes are low-risk."},
+          "scope_id": {"type": "string", "description": "Scope ID"},
+          "discovery_scope": {"type": "string", "description": "same_project, global_discoverable, explicit_only, or linked_projects"},
+          "claim_strength": {"type": "string", "description": "observation, assessment, recommendation, or policy"},
+          "source_refs": {"type": "array", "items": {"type": "object"}, "description": "Source references for provenance"}
+        },
+        "required": ["raw_text"]
+      }
+    },
+    {
+      "name": "den_memory_propose",
+      "description": "Propose a memory candidate for review. Creates a pending candidate only — no auto-promote. Use this when you want explicit curation review before the memory becomes recall-visible. Non-worker agents: prefer den_memory_store for immediate curated storage.",
+      "behavior": "candidate_only",
+      "audience": ["worker", "agent"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string", "description": "Title for the proposed memory"},
+          "body_md": {"type": "string", "description": "Body content in markdown"},
+          "summary": {"type": "string", "description": "Short summary"},
+          "proposed_kind": {"type": "string", "description": "Kind of memory (fact, observation, decision, etc.)"},
+          "scope_kind": {"type": "string", "description": "Scope kind"},
+          "scope_id": {"type": "string", "description": "Scope ID"},
+          "discovery_scope": {"type": "string", "description": "same_project, global_discoverable, explicit_only, or linked_projects"},
+          "claim_strength": {"type": "string", "description": "observation, assessment, recommendation, or policy"},
+          "source_refs": {"type": "array", "items": {"type": "object"}, "description": "Source references for provenance"}
+        },
+        "required": ["title", "body_md", "proposed_kind"]
+      }
+    },
+    {
+      "name": "den_memory_doctor",
+      "description": "Read-only Den Memories service health report. Returns schema version, migration status, and service state. Safe to call at any time.",
+      "behavior": "read_only",
+      "audience": ["agent", "worker"],
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

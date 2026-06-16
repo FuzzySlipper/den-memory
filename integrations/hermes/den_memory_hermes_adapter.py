@@ -19,15 +19,17 @@ DEN_MEMORY_TOOL_NAMES = frozenset({
     "den_memory_recall",
     "den_memory_read",
     "den_memory_search",
-    "den_memory_store_candidate",
-    "den_memory_capture_event",
+    "den_memory_store",
+    "den_memory_propose",
     "den_memory_doctor",
 })
 
 DEFAULT_ADAPTER_TEXT = (
-    "Den Memories auto-promotes agent-scoped capture to curated memory. "
-    "Profile/agent-scoped memories are particularly low-risk — store freely. "
-    "Auto-promote does not apply to workers or auditors."
+    "Den Memories tools: den_memory_store (auto-promotes to curated entry), "
+    "den_memory_recall, den_memory_read, den_memory_search, "
+    "den_memory_propose (candidate-only, for workers or explicit staging). "
+    "Profile/agent-scoped stores are particularly low-risk — store freely. "
+    "See contracts/v0/tools.json for canonical tool definitions."
 )
 
 
@@ -162,8 +164,8 @@ class DenMemoryHermesProvider:
             self._schema("den_memory_recall", "Read-only guided recall packet from Den Memories. Returns only active curated memory entries (auto-promoted captures are included). Profile/agent-scoped memories are discoverable within their scope.", {"query": {"type": "string"}, "budget_tokens": {"type": "integer", "minimum": 1}, "include_candidates": {"type": "boolean"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "topic_view_slug": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["query", "budget_tokens", "include_candidates"]),
             self._schema("den_memory_read", "Read a Den Memories entry by slug.", {"slug": {"type": "string"}}, ["slug"]),
             self._schema("den_memory_search", "Search Den Memories entries and candidates.", {"query": {"type": "string"}, "include_candidates": {"type": "boolean"}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, ["query"]),
-            self._schema("den_memory_store_candidate", "Create a pending Den Memories candidate. Non-worker agents should prefer den_memory_capture_event instead, which auto-promotes to curated memory. This tool is for explicit candidate-only storage (e.g. pre-curation review, split/merge staging, external pipeline ingestion). Profile/agent-scoped candidates are particularly low-risk.", {"title": {"type": "string"}, "body_md": {"type": "string"}, "summary": {"type": "string"}, "proposed_kind": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "authority_scope_kind": {"type": "string"}, "authority_scope_id": {"type": "string"}, "discovery_scope": {"type": "string"}, "claim_strength": {"type": "string"}, "source_refs": {"type": "array", "items": {"type": "object"}}}, ["title", "body_md", "proposed_kind"]),
-            self._schema("den_memory_capture_event", "Send a runtime capture attempt through Den Memories capture policy. Non-worker non-auditor agents: captured content is auto-promoted to an active curated memory entry immediately recall-visible within its scope. Workers: metadata-only. Auditors: ignored. Profile/agent-scoped captures are particularly low-risk — store experimentation freely there.", {"raw_text": {"type": "string"}, "event_kind": {"type": "string"}, "title": {"type": "string"}, "summary": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "source_refs": {"type": "array", "items": {"type": "object"}}}, ["raw_text"]),
+            self._schema("den_memory_propose", "Propose a memory candidate for review. Creates a pending candidate only — no auto-promote. Use this when you want explicit curation review before the memory becomes recall-visible. Non-worker agents: prefer den_memory_store for immediate curated storage.", {"title": {"type": "string"}, "body_md": {"type": "string"}, "summary": {"type": "string"}, "proposed_kind": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "discovery_scope": {"type": "string"}, "claim_strength": {"type": "string"}, "source_refs": {"type": "array", "items": {"type": "object"}}}, ["title", "body_md", "proposed_kind"]),
+            self._schema("den_memory_store", "Store a memory. For non-worker agents: content is auto-promoted to an active curated memory entry immediately recall-visible within its scope. Profile/agent-scoped stores are particularly low-risk — store experimentation freely. Workers: use den_memory_propose instead (capture is metadata-only for workers).", {"raw_text": {"type": "string"}, "title": {"type": "string"}, "summary": {"type": "string"}, "scope_kind": {"type": "string"}, "scope_id": {"type": "string"}, "discovery_scope": {"type": "string"}, "claim_strength": {"type": "string"}, "source_refs": {"type": "array", "items": {"type": "object"}}}, ["raw_text"]),
             self._schema("den_memory_doctor", "Read-only Den Memories doctor report.", {}, []),
         ]
 
@@ -193,9 +195,9 @@ class DenMemoryHermesProvider:
                 cand_result = self._safe_call("POST", "/api/candidates/search", {"query": args["query"], "limit": args.get("limit", 10)})
                 return json.dumps({"ok": entry_result.get("ok") and cand_result.get("ok"), "entries": entry_result, "candidates": cand_result}, sort_keys=True)
             return json.dumps(entry_result, sort_keys=True)
-        if tool_name == "den_memory_store_candidate":
+        if tool_name == "den_memory_propose":
             return json.dumps(self._safe_call("POST", "/api/candidates", self._candidate_payload(args)), sort_keys=True)
-        if tool_name == "den_memory_capture_event":
+        if tool_name == "den_memory_store":
             return json.dumps(self._safe_call("POST", "/api/capture", self._capture_payload(args)), sort_keys=True)
         if tool_name == "den_memory_doctor":
             return json.dumps(self._safe_call("GET", "/api/doctor/report"), sort_keys=True)
