@@ -23,6 +23,12 @@ var jsonColumns = map[string]struct{}{
 	"exclude_relations_json":     {},
 	"default_unroll_policy_json": {},
 	"condition_json":             {},
+	"proposed_action_json":       {},
+	"proposed_entry_json":        {},
+	"proposed_graph_json":        {},
+	"evidence_refs_json":         {},
+	"existing_context_json":      {},
+	"model_metadata_json":        {},
 }
 
 // JSON returns canonical JSON text for SQLite storage.

@@ -74,6 +74,13 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/curation/memory-entries/{slug}/supersede", h.curationSupersedeEntry)
 	mux.HandleFunc("POST /api/curation/topic-edges/link", h.curationLinkEdge)
 	mux.HandleFunc("POST /api/curation/topic-edges/{edge_id}/unlink", h.curationUnlinkEdge)
+	mux.HandleFunc("GET /api/curation/queue", h.curationQueue)
+	mux.HandleFunc("POST /api/curation/proposals", h.createCurationProposal)
+	mux.HandleFunc("GET /api/curation/proposals", h.listCurationProposals)
+	mux.HandleFunc("GET /api/curation/proposals/{proposal_id}", h.getCurationProposal)
+	mux.HandleFunc("POST /api/curation/proposals/{proposal_id}/apply", h.applyCurationProposal)
+	mux.HandleFunc("POST /api/curation/proposals/{proposal_id}/reject", h.rejectCurationProposal)
+	mux.HandleFunc("POST /api/curation/proposals/{proposal_id}/defer", h.deferCurationProposal)
 
 	mux.HandleFunc("POST /api/recall", h.recall)
 	mux.HandleFunc("GET /api/recall-logs/by-packet/{packet_id}", h.getRecallLogByPacket)

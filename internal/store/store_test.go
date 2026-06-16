@@ -16,8 +16,8 @@ func TestApplyMigrationsAndCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMigrations: %v", err)
 	}
-	if len(applied) != 3 {
-		t.Fatalf("applied migrations = %v, want 3 migrations", applied)
+	if len(applied) != 4 {
+		t.Fatalf("applied migrations = %v, want 4 migrations", applied)
 	}
 	if err := s.CheckCapabilities(); err != nil {
 		t.Fatalf("CheckCapabilities: %v", err)
@@ -26,7 +26,7 @@ func TestApplyMigrationsAndCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TableNames: %v", err)
 	}
-	for _, name := range []string{"memory_entries", "memory_candidates", "topic_nodes", "memory_entries_fts", "memory_candidates_fts"} {
+	for _, name := range []string{"memory_entries", "memory_candidates", "curation_proposals", "topic_nodes", "memory_entries_fts", "memory_candidates_fts"} {
 		if _, ok := names[name]; !ok {
 			t.Fatalf("missing table %s", name)
 		}

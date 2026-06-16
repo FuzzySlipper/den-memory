@@ -45,6 +45,29 @@ curl -fsS http://127.0.0.1:8765/health
 curl -fsS http://127.0.0.1:8765/api/version
 ```
 
+## Curation proposal workflow
+
+Runtime agents should store memory candidates; they should not directly promote curated truth. Den Memories exposes a role-separated curation workflow:
+
+- `GET /api/curation/queue` lists pending/claimed candidates with source refs, associated proposals, `queue_state`, and `suggested_next_action`.
+- `POST /api/curation/proposals` stores curator/assistant proposals only. Proposal creation does **not** mutate candidates or make proposed memory recall-visible.
+- `POST /api/curation/proposals/{proposal_id}/apply` requires `actor_identity` and `reason`, replays the stored proposal through strict curation paths, writes curation events, and only then makes promoted memory recall-visible.
+- `POST /api/curation/proposals/{proposal_id}/reject` and `/defer` update proposal state without mutating candidate or memory-entry truth.
+
+A deterministic Go proposal-producer CLI is available for non-LLM/local workflows:
+
+```bash
+go run ./cmd/den-memory-curator \
+  --base-url http://127.0.0.1:8765 \
+  --mode deterministic \
+  --action promote \
+  --candidate-ids 12 \
+  --proposer-identity den-memory-curator \
+  --reason "reviewed source refs"
+```
+
+The CLI is deliberately proposal-only; it never calls proposal apply endpoints. Future LLM-backed proposer workers should implement the same Go `curator.Proposer` seam and still store proposals for explicit operator apply.
+
 ## Deploy to den-srv
 
 The canonical live Den Memories v0 service runs on `den-srv` / `192.168.1.10` as a first-class systemd service:
