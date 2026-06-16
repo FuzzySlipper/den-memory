@@ -47,7 +47,18 @@ curl -fsS http://127.0.0.1:8765/api/version
 
 ## Deploy to den-srv
 
-Regular Den agents on den-k8 can deploy the service to den-srv with the checked-in deploy helper. The helper validates the Go repo, builds local Linux binaries, stages only the service artifacts, installs them over SSH, and smokes the remote systemd service.
+The canonical live Den Memories v0 service runs on `den-srv` / `192.168.1.10` as a first-class systemd service:
+
+- systemd unit: `den-memory.service`
+- service user/group: `den-memory`
+- service root: `/data/services/den-memory`
+- app directory: `/data/services/den-memory/app`
+- env file: `/data/services/den-memory/env/server.env`
+- data/SQLite path: `/data/services/den-memory/data/den-memories.sqlite`
+- current selected-profile LAN URL: `http://192.168.1.10:8780`
+- health: `curl -fsS http://192.168.1.10:8780/health`
+
+Regular Den agents on den-k8/k8plus can update the service with the checked-in deploy helper. The helper validates the Go repo, builds local Linux binaries, stages only the service artifacts, installs them over SSH, writes or backs up env/unit files as needed, restarts/enables the service, and smokes the remote systemd service.
 
 Default mode is non-mutating:
 
@@ -55,21 +66,23 @@ Default mode is non-mutating:
 scripts/deploy-den-srv.sh
 ```
 
-Apply the deploy after the plan looks correct:
+Apply the trusted-LAN deploy used by the selected Hermes/pi-crew rollout:
 
 ```bash
-scripts/deploy-den-srv.sh --yes
+scripts/deploy-den-srv.sh --yes --addr 0.0.0.0:8780 --force-env
 ```
 
-Defaults:
+The helper preserves `/data/services/den-memory/app.previous` on replacement and creates timestamped backups for overwritten env/unit files. Manual rollback outline:
 
-- SSH target: `den-srv`
-- systemd unit: `den-memory.service`
-- service user/group: `den-memory`
-- service root: `/data/services/den-memory/`
-- env file: `/data/services/den-memory/env/server.env`
-- data/SQLite path: `/data/services/den-memory/data/den-memories.sqlite`
-- initial bind: `127.0.0.1:8780`
+```bash
+ssh den-srv
+sudo systemctl stop den-memory.service
+sudo rm -rf /data/services/den-memory/app
+sudo mv /data/services/den-memory/app.previous /data/services/den-memory/app
+sudo systemctl daemon-reload
+sudo systemctl restart den-memory.service
+curl -fsS http://127.0.0.1:8780/health
+```
 
-Use `--addr 0.0.0.0:8780 --force-env` only if selected Hermes/pi-crew clients need direct trusted-LAN access. v0 intentionally relies on LAN/service-boundary trust and does not add API auth/RBAC.
+Security posture: v0 intentionally relies on trusted-LAN/service-boundary trust and does not add API auth/RBAC. Keep `0.0.0.0:8780` on the trusted LAN only; do not expose it through WAN/reverse-proxy without a separate auth decision. The deployment record is mirrored in Den as `den-network/den-memory-service-deploy-2026-06-15`.
 

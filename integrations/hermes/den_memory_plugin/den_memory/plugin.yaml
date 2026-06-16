@@ -1,0 +1,4 @@
+name: den_memory
+version: 0.1.0
+description: "Den Memories v0 service-backed explicit memory provider for selected Hermes profiles."
+kind: exclusive

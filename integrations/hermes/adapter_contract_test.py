@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 from typing import Any
 
@@ -57,6 +60,103 @@ class HermesAdapterContractTests(unittest.TestCase):
         self.assertEqual(payload["budget_tokens"], 3000)
         self.assertIs(payload["include_candidates"], False)
         self.assertIn("runtime_context", payload)
+    def test_service_plugin_reads_config_and_preserves_prompt_invariant(self) -> None:
+        from integrations.hermes.den_memory_plugin.den_memory import HermesDenMemoryServiceProvider
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "config.yaml").write_text(
+                "\n".join(
+                    [
+                        "memory:",
+                        "  provider: den_memory",
+                        "den_memory:",
+                        "  enabled: true",
+                        "  service_url: http://127.0.0.1:8780",
+                        "  deny_auto_behavior: true",
+                        "  auto_recall: false",
+                        "  capture_on_sync: false",
+                        "  profile: kate",
+                        "  project_id: den-memory",
+                        "  role: assistant",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            old_home = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(home)
+            try:
+                client = RecordingClient()
+                provider = HermesDenMemoryServiceProvider(client=client)
+                self.assertTrue(provider.is_available())
+                provider.initialize("session", platform="cli")
+                before = provider.system_prompt_block()
+                provider.sync_turn("hello", "world", session_id="session")
+                after = provider.system_prompt_block()
+            finally:
+                if old_home is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = old_home
+            self.assertEqual(before, after)
+            names = {schema["name"] for schema in provider.get_tool_schemas()}
+            self.assertIn("den_memory_recall", names)
+            self.assertIn("den_memory_doctor", names)
+
+    def test_service_plugin_rejects_automatic_rollout_without_deny_auto_behavior(self) -> None:
+        from integrations.hermes.den_memory_plugin.den_memory import HermesDenMemoryServiceProvider
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "config.yaml").write_text(
+                "den_memory:\n  enabled: true\n  service_url: http://127.0.0.1:8780\n  deny_auto_behavior: false\n",
+                encoding="utf-8",
+            )
+            old_home = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(home)
+            try:
+                provider = HermesDenMemoryServiceProvider(client=RecordingClient())
+                with self.assertRaises(RuntimeError):
+                    provider.initialize("session")
+            finally:
+                if old_home is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = old_home
+    def test_service_plugin_flush_context_disables_tools(self) -> None:
+        from integrations.hermes.den_memory_plugin.den_memory import HermesDenMemoryServiceProvider
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "config.yaml").write_text(
+                "\n".join(
+                    [
+                        "den_memory:",
+                        "  enabled: true",
+                        "  service_url: http://127.0.0.1:8780",
+                        "  deny_auto_behavior: true",
+                        "  profile: kate",
+                        "  project_id: den-memory",
+                        "  role: assistant",
+                        "  runtime_context:",
+                        "    session_kind: durable_agent",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            old_home = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(home)
+            try:
+                provider = HermesDenMemoryServiceProvider(client=RecordingClient())
+                provider.initialize("flush-session", agent_context="flush", agent_identity="kate")
+                self.assertFalse(provider.is_available())
+                self.assertEqual(provider.get_tool_schemas(), [])
+                self.assertEqual(provider.system_prompt_block(), "")
+            finally:
+                if old_home is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = old_home
 
 
 if __name__ == "__main__":
